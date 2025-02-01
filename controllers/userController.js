@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from "bcrypt";
+import message from '../models/message.js';
 const { sign, verify }=jwt;
 const { hash, compare } =bcrypt;
 
@@ -27,7 +28,8 @@ async saveToken (req, res){
 },
 */
   async  register(req, res) {
-    const { email, name, universityName, phoneNumber, password } = req.body;
+    const { email, name, universityName, phoneNumber, password,expoPushToken } = req.body;
+    console.log(expoPushToken)
     try {
         // Check if user already exists
         const user =  await User.findOne({ $or: [{ email }, { phoneNumber }] });
@@ -47,6 +49,7 @@ async saveToken (req, res){
             universityName,
             phoneNumber,
             role: 'customer',
+            expoPushToken,
         });
         // Save the user in the database
         await newUser.save();
@@ -78,7 +81,7 @@ async verifySellerApplication(req, res){
 
 // Login Controller
 async  login(req, res) {
-    const { email, password } = req.body;
+    const { email, password, expoPushToken } = req.body;
     try {
         // Check if user exists
         const user = await User.findOne({ email });
@@ -89,6 +92,12 @@ async  login(req, res) {
         const isMatch = await compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials: password does not match' });
+        }
+        
+        // Update the Expo push token if provided
+        if (expoPushToken) {
+          user.expoPushToken = expoPushToken;
+          await user.save();
         }
         // Generate a JWT token
         const accesstoken = sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '1d' });
@@ -155,6 +164,22 @@ async refreshToken(req, res) {
       res.status(500).json({ message: 'Error refreshing access token' });
     }
   },
+
+async getAllUsers(req,res){
+  try {
+    const users = await User.find();
+    const totalUsers = await User.countDocuments();
+    // Respond with both the total number and the products
+    res.status(200).json({
+      total: totalUsers,
+      users,
+    });
+    
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({message:"error fetching users"});
+  }
+}
 
 }
 export default userController;

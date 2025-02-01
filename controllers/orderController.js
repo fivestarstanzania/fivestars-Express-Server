@@ -1,8 +1,12 @@
 import  Order from "../models/OrderModel.js";
+import { io } from "../socket/socket.js";
 import User from '../models/User.js';
 import Product from "../models/ProductModel.js";
 import Notification from "../models/notificationModel.js";
 import { getReceiverSocketId } from "../socket/socket.js";
+import axios from "axios";
+
+
 export async function createOrder(req, res) {
   const buyerId = req.user._id;
   try {
@@ -55,8 +59,10 @@ export async function createOrder(req, res) {
       },
       status,
       product: {
+        id:productId,
         productImage: productDetails.imageUrl, 
         productPrice: productDetails.price, 
+        
       },
     });
 
@@ -65,16 +71,48 @@ export async function createOrder(req, res) {
     
 
     // Send real-time notification to the seller
-    const message = `Order ${orderNumber} has been placed.`;
-    const newNotification = new Notification({ receiverId: seller, message });
+    const title = "New order"
+    const message = `New order number ${orderNumber} has been placed.`;
+    const newNotification = new Notification({ 
+      receiverId: seller, 
+      title,
+      message,
+      type: "Order",
+      metadata: {
+        orderId: newOrder._id,
+        productId,
+        toward:"seller",
+      },
+
+    });
     await newNotification.save();
+    //console.log(`saved notification`)
+
 
     const receiverSocketId = getReceiverSocketId(seller);
+    
     if (receiverSocketId) {
-      req.io.to(receiverSocketId).emit("newNotification", newNotification);
-      console.log(newNotification)
+      
+      io.to(receiverSocketId).emit("newNotification", newNotification);
+      
     }
 
+    // Get seller's Expo push token
+    const sellerDetail = await User.findById(seller);
+    const expoPushToken = sellerDetail.expoPushToken;
+
+    if (expoPushToken) {
+      try {
+        const response = await axios.post('https://exp.host/--/api/v2/push/send', {
+          to: expoPushToken,
+          title: newNotification.title,
+          body: newNotification.message,
+        });
+        console.log('Notification sent:', response.data);
+      } catch (error) {
+        console.error('Error sending notification:', error);
+      }
+    }  
     res.status(201).json({ message: "Order created and seller notified!", order: newOrder });
     
   } catch (error) {
@@ -122,7 +160,7 @@ export async function getSellerOrders(req, res) {
     console.error(error);
     res.status(500).json({ message: "Failed to retrieve seller's orders" });
   }
-}
+};
 
 export async function getOrderDetails(req, res) {
   const { orderId } = req.query; 
@@ -176,10 +214,47 @@ export async function updateOrderStatus(req, res) {
     // Save the updated order
     await order.save();
 
+    // Notify the buyer about the status update
+    const title = "Order Comfirmed"
+    const message = `Your Order number: ${order.orderNumber} has been comfirmed.`;
+    const newNotification = new Notification({
+      receiverId: order.buyer.id,
+      title,
+      message,
+      type: "Order",
+      metadata: {
+        orderId: order._id,
+        toward:"buyer"
+      },
+      
+    });
+    await newNotification.save();
+
+    const receiverSocketId = getReceiverSocketId(order.buyer.id);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("newNotification", newNotification);
+    }
     // Return the updated order
     res.status(200).json(order);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
   }
+}
+
+export async function getAllOrdersForAdmin(req, res) {
+    try {
+        // Fetch all products and count the total number
+        const orders = await Order.find().sort({ createdAt: -1 });
+       
+        const totalOrders = await Order.countDocuments();
+
+        // Respond with both the total number and the products
+        res.status(200).json({
+            total: totalOrders,
+            orders,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to get the products" });
+    }
 }

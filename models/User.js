@@ -17,7 +17,7 @@ const userSchema = new Schema(
     universityName: { type: String, required: true },
     phoneNumber: { type: String, required: true },
     role: { type: String, default: 'customer' }, // 'customer' or 'seller'
-    applicationStatus: { type: String, default: 'none' }, // 'none', 'pending', 'approved', 'declined'
+    expoPushToken: {type:String},
     brandLogo: { type: String, default: '' },
 }, {timestamps:true}
 );

@@ -5,7 +5,7 @@ import User from '../models/User.js';
 import  cloudinary  from '../utils/cloudinary.js';
 export async function createProduct(req, res) {
     const senderId = req.user._id;
-    const { name, description, price, image, category } = req.body;
+    const { description, price, image, category } = req.body;
     try {
         // Ensure an image is uploaded
         if (!image) {
@@ -20,7 +20,6 @@ export async function createProduct(req, res) {
 
         const newProduct = new Product({
             uploadedBy:senderId,
-            title: name,
             description,
             price,
             imageUrl: result.secure_url, // Save Cloudinary image URL in MongoDB
@@ -67,7 +66,7 @@ export async function getProduct(req, res) {
             sellerName: seller.name
         };
 
-        console.log(responseData)
+       
 
         // Send the response
         res.status(200).json(responseData);
@@ -81,11 +80,7 @@ export async function searchProduct(req, res) {
 
     try {
         const key = req.params.key;
-        console.log("Search key received:", key);
-        console.log(key)
         const result = await Product.find({ $text: { $search: key } });
-        console.log("hello")
-        console.log(result)
         res.json(result);
             
     } catch (error) {
@@ -147,7 +142,7 @@ export async function getSellerProducts(req, res) {
         return res.status(400).json({ error: 'Seller ID is required' });
       }
 
-      const products = await Product.find({ uploadedBy });
+      const products = await Product.find({ uploadedBy }).sort({createdAt: -1});
 
       res.status(200).json( products );
       //console.log(products)
@@ -156,4 +151,21 @@ export async function getSellerProducts(req, res) {
       res.status(500).json({ error: 'Internal Server Error' });
     };
 };
+
+export async function getAllProductsForAdmin(req, res) {
+    try {
+        // Fetch all products and count the total number
+        const products = await Product.find().sort({ createdAt: -1 });
+       
+        const totalProducts = await Product.countDocuments();
+
+        // Respond with both the total number and the products
+        res.status(200).json({
+            total: totalProducts,
+            products: products,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to get the products" });
+    }
+}
 

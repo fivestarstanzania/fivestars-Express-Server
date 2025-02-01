@@ -72,9 +72,9 @@ export const getAllContatedUsers = async (req, res) => {
 
 // Controller to fetch the total unread messages count for the logged-in user
 export const getUnreadMessageCount = async (req, res) => {
-    console.log("i have got request for unread messages ")
+    
     try {
-        console.log("i try to request for unread messages ")
+        
         const myId = req.user._id; // Get the logged-in user's ID
 
         // Step 1: Count all unread messages for the logged-in user
@@ -83,12 +83,11 @@ export const getUnreadMessageCount = async (req, res) => {
             isRead: false, // Only consider unread messages
         });
 
-        console.log("i have got unread messages now i sent to you")
         // Step 2: Send the unread message count as the response
         res.status(200).json({ unreadCount });
-        console.log(`total unread count ${unreadCount}`)
+        
     } catch (error) {
-        console.log("Error in getUnreadMessageCount controller:", error.message);
+       
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -99,10 +98,6 @@ export const getMessages = async(req,res)=>{
     //const { roomId } = req.params;
     //console.log("get Message Called")
     try {
-
-        console.log("In try to find message from database")
-
-        
         const {id: userToChatId} = req.params;
         const myId =req.user._id;
 
@@ -116,27 +111,17 @@ export const getMessages = async(req,res)=>{
             { roomId, receiverId: myId, isRead: false },
             { $set: { isRead: true } }
         );
-
-        console.log(`Generated roomId: ${roomId}`);
-
         const messages = await Message.find({ roomId }).sort({ createdAt: 1 });
-        if (messages.length > 0) {
-            console.log('Response of success to get message sent')
-            res.status(200).json(messages);
-            console.log(messages)
+        if (messages.length > 0) { 
+            res.status(200).json(messages); 
         }
         else{
-            res.status(200).json({ message: "No messages found" });
-            console.log('No message sent')
-        }
-        
-        
+            res.status(200).json({ message: "No messages found" });   
+        } 
     } catch (error) {
-        console.log("Error in getMessages controller", error.message)
         res.status(500).json({message:"Internal server error"});
     }
 }
-
 
 export const sendMessage = async(req,res)=>{
 

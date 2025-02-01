@@ -34,7 +34,7 @@ const orderSchema = new Schema(
     seller: {
       id: { 
         type: Schema.Types.ObjectId, 
-        ref: 'User', // Reference to the User model
+        ref: 'User', 
         required: true 
       },
       name:{
@@ -51,6 +51,11 @@ const orderSchema = new Schema(
       productPrice: {
         type: Number,
         required: true,
+      },
+      id: { 
+        type: Schema.Types.ObjectId, 
+        ref: 'Product', 
+        required: true 
       },
     },
     review: {

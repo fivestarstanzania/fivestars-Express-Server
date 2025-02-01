@@ -25,8 +25,11 @@ const io = new Server(server, {
 io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
     socket.on("userConnected", (data) => {
-      console.log(`User send us that he connected:`, data);
+      
       // You can store the userId or take any action here
+      const { userId } = data; // Assuming the client sends userId on connection
+      userSocketMap[userId] = socket.id;
+      
     });
 
     // Handle different event categories
@@ -45,7 +48,7 @@ io.on("connection", (socket) => {
         }
       }
     });
-});
+}); 
 
 export {io, app, server};
 
