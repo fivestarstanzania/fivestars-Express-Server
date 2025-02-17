@@ -46,6 +46,10 @@ const SellerSchema = new mongoose.Schema({
     type: String, 
     default: "Active",
   },
+  uploadLimit: { 
+    type: Number, 
+    default: 10 
+  },
 },
 {
   timestamps: true, 

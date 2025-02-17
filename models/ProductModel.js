@@ -4,6 +4,7 @@ const ProductSchema = new Schema(
   {
     imageUrl: { type: String, required: true }, 
     description: { type: String, required: true },
+    title: { type: String, required: true },
     price: { type: String, required: true },
     uploadedBy: { 
       type: Schema.Types.ObjectId, 
@@ -16,5 +17,6 @@ const ProductSchema = new Schema(
 );
 
 ProductSchema.index({description: 'text' });
+ProductSchema.index({title: 'text' });
 
 export default model('Product', ProductSchema);

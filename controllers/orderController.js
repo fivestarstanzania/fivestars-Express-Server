@@ -1,10 +1,10 @@
 import  Order from "../models/OrderModel.js";
-import { io } from "../socket/socket.js";
 import User from '../models/User.js';
 import Product from "../models/ProductModel.js";
 import Notification from "../models/notificationModel.js";
-import { getReceiverSocketId } from "../socket/socket.js";
 import axios from "axios";
+import {io,getReceiverSocketId } from "../socket/socket.js";
+import { Socket } from "socket.io";
 
 
 export async function createOrder(req, res) {
@@ -89,14 +89,13 @@ export async function createOrder(req, res) {
     //console.log(`saved notification`)
 
 
-    const receiverSocketId = getReceiverSocketId(seller);
+    // use socket to send update
+    const sellerSocketId = getReceiverSocketId(newOrder.seller.id.toString());
     
-    if (receiverSocketId) {
-      
-      io.to(receiverSocketId).emit("newNotification", newNotification);
-      
+    if(sellerSocketId){
+      io.to(sellerSocketId).emit("newOrder", newOrder)
     }
-
+    
     // Get seller's Expo push token
     const sellerDetail = await User.findById(seller);
     const expoPushToken = sellerDetail.expoPushToken;
@@ -108,7 +107,7 @@ export async function createOrder(req, res) {
           title: newNotification.title,
           body: newNotification.message,
         });
-        console.log('Notification sent:', response.data);
+        //console.log('Notification sent on creating order:', response.data);
       } catch (error) {
         console.error('Error sending notification:', error);
       }
@@ -184,7 +183,7 @@ export async function getOrderDetails(req, res) {
 }
 
 export async function  getRecentOrders(req, res){
-  console.log("here for last three orders")
+  //console.log("here for last three orders")
   const sellerId = req.user._id;
   try {
     const orders = await Order.find({ "seller.id": sellerId }).sort({createdAt:-1})
@@ -215,8 +214,8 @@ export async function updateOrderStatus(req, res) {
     await order.save();
 
     // Notify the buyer about the status update
-    const title = "Order Comfirmed"
-    const message = `Your Order number: ${order.orderNumber} has been comfirmed.`;
+    const title = `Order ${status}`
+    const message = `Your Order number: ${order.orderNumber} has been ${status}.`;
     const newNotification = new Notification({
       receiverId: order.buyer.id,
       title,
@@ -230,11 +229,44 @@ export async function updateOrderStatus(req, res) {
     });
     await newNotification.save();
 
-    const receiverSocketId = getReceiverSocketId(order.buyer.id);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newNotification", newNotification);
+    //use socket
+    const buyerSocketId = getReceiverSocketId(order.buyer.id.toString());
+    const sellerSocketId = getReceiverSocketId(order.seller.id.toString());
+    
+    if(sellerSocketId){
+      io.to( sellerSocketId).emit("orderStatusUpdate", order)
     }
-    // Return the updated order
+    if (buyerSocketId) {
+      // Send order update
+      io.to(buyerSocketId).emit("orderStatusUpdate", order);
+      // Send notification
+      io.to(buyerSocketId).emit("newNotification", newNotification);
+    }
+    
+
+   
+
+    const user = await User.findById(order.buyer.id)
+    const expoPushToken = user.expoPushToken;
+    //console.log(expoPushToken)
+    if (expoPushToken) {
+      try {
+        const response = await axios.post('https://exp.host/--/api/v2/push/send', {
+          to: expoPushToken,
+          title: newNotification.title,
+          body: newNotification.message,
+          priority: 'high',
+          sound: "default", 
+          channelId: 'default',
+          data:order,
+        });
+        //console.log('Notification sent on update order status:', response.data);
+      } catch (error) {
+        console.error('Error sending notification:', error);
+      }
+    }
+
+
     res.status(200).json(order);
   } catch (error) {
     console.error(error);
@@ -242,19 +274,25 @@ export async function updateOrderStatus(req, res) {
   }
 }
 
-export async function getAllOrdersForAdmin(req, res) {
-    try {
-        // Fetch all products and count the total number
-        const orders = await Order.find().sort({ createdAt: -1 });
-       
-        const totalOrders = await Order.countDocuments();
+export async function getTotalNumberPendingOrders(req, res) {
 
-        // Respond with both the total number and the products
-        res.status(200).json({
-            total: totalOrders,
-            orders,
-        });
-    } catch (error) {
-        res.status(500).json({ message: "Failed to get the products" });
+  const sellerId = req.user._id;
+  try {
+    if (!sellerId) {
+      return res.status(400).json({ message: "Seller ID is required." });
     }
+
+    // Count orders where the seller.id matches and status is "pending"
+    const pendingOrdersCount = await Order.countDocuments({
+      "seller.id": sellerId,
+      status: "Pending",
+    });
+
+    
+    res.status(200).json({ totalPendingOrders: pendingOrdersCount });
+  } catch (error) {
+    console.error("Error fetching total number of pending orders:", error);
+    res.status(500).json({ message: "Failed to get the total number of pending orders." });
+  }
+
 }

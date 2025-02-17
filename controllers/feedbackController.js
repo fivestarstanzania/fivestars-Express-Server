@@ -1,5 +1,4 @@
 import Feedback from '../models/feedbackModel.js';
-import User from '../models/User.js'; // Assuming you don't need `.default` with ES modules
 
 // Post feedback
 export const postFeedback = async (req, res) => {
@@ -14,7 +13,7 @@ export const postFeedback = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         } else {
-            console.log(user);
+            //console.log(user);
         }
 
         // Create feedback with username and email included
@@ -28,25 +27,8 @@ export const postFeedback = async (req, res) => {
 
         res.status(201).json({ message: 'Feedback submitted successfully', feedback: newFeedback });
     } catch (err) {
-        console.error(err);
+        //console.error(err);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
 
-// Get all feedback
-export const getAllFeedback = async (req, res) => {
-    try {
-        const feedbacks = await Feedback.find().sort({ createdAt: -1 });
-        
-        const totalFeedbacks = await Feedback.countDocuments();
-
-       
-        res.status(200).json({
-            total: totalFeedbacks,
-            feedbacks
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};

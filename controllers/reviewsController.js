@@ -89,7 +89,9 @@ export const getReviews = async (req, res) => {
     const seller = reviewType === "Seller" ? await Seller.findOne({sellerId:id}): null
     const query = reviewType === "Product" ? { productId: id } : { sellerId: seller._id };
     const reviews = await Review.find({ reviewType, ...query })
-      .populate("userId", "name") 
+      .populate({ path: "userId", select: "name" }) 
+      .exec();
+      //console.log(reviews)
     res.status(200).json({ reviews });
   } catch (error) {
     console.error(error);

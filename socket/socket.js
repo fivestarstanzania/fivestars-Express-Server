@@ -3,13 +3,11 @@ import http from "http";
 import express from "express"; 
 
 
-import { handleUserEvents } from "./Events/userEvents.js";
-import { handleMessageEvents } from "./Events/messageEvents.js";
-import { handleNotificationEvents } from "./Events/notificationEvents.js";
 const app = express();
 const server = http.createServer(app);
-const users = {}; 
-const userSocketMap = {}// {userId: socketId}
+
+// Track connected users: { userId: socketId }
+const userSocketMap = {}
 
 const io = new Server(server, {
     cors: {
@@ -22,29 +20,29 @@ const io = new Server(server, {
     },
 }); 
 
+// Handle socket connections
 io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id);
-    socket.on("userConnected", (data) => {
-      
-      // You can store the userId or take any action here
-      const { userId } = data; // Assuming the client sends userId on connection
-      userSocketMap[userId] = socket.id;
-      
-    });
+    //console.log("A user connected:", socket.id);
 
-    // Handle different event categories
-    
-    handleUserEvents(io, socket, userSocketMap);
-    handleMessageEvents(io, socket, userSocketMap);
-    handleNotificationEvents(io, socket, userSocketMap);
-    
+    // 1. Save user's socket ID when they identify themselves
+    socket.on("registerUser", (data) => {
+      if (!data || !data.userId) {
+        console.error("Invalid registerUser data:", data);
+        return;
+      }
+      const userIdString = data.userId.toString();
+      userSocketMap[userIdString] = socket.id;
+      //console.log(userSocketMap)
+      //console.log(`User ${userIdString} registered with socket ${socket.id}`);  
+    });
 
     // Handle disconnection
     socket.on("disconnect", () => {
       console.log("A user disconnected:", socket.id);
-      for (const [key, value] of Object.entries(userSocketMap)) {
-        if (value === socket.id) {
-          delete userSocketMap[key];
+      for (const [userId, socketId] of Object.entries(userSocketMap)) {
+        if (socketId === socket.id) {
+          delete userSocketMap[userId];
+          break
         }
       }
     });
@@ -53,7 +51,8 @@ io.on("connection", (socket) => {
 export {io, app, server};
 
 
-// Export utilities
 export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
+  return userSocketMap[userId.toString()];
 }
+
+

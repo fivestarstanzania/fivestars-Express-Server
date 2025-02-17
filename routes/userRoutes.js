@@ -10,12 +10,6 @@ const router = express.Router();
 router.post('/register', validateAndSanitizeRegistration, handleValidationErrors, userController.register);
 router.post("/login", validateAndSanitizeLogin, handleValidationErrors, userController.login);
 router.post('/refresh-token', userController.refreshToken);
-router.post('/verify-seller', userController.verifySellerApplication);
+router.post('/update-expo-push-token', authMiddleware, userController.updateExpoToken)
 router.get('/', authMiddleware, userController.checkAuth);
-router.get('/sameja',  userController.getAllUsers);
-
-
-// router.get('/search/:key', productController.searchProduct);
-// router.post('/', productController.createProduct);
-
 export default router;

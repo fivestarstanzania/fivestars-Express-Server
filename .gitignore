@@ -2,7 +2,7 @@
 # Node.js dependencies
 node_modules/
 
-# Environment variables
+# Environment variablesrt
 .env
 
 # Logs

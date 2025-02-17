@@ -17,7 +17,7 @@ const userSchema = new Schema(
     universityName: { type: String, required: true },
     phoneNumber: { type: String, required: true },
     role: { type: String, default: 'customer' }, // 'customer' or 'seller'
-    expoPushToken: {type:String},
+    expoPushToken: {type:String,default: null},
     brandLogo: { type: String, default: '' },
 }, {timestamps:true}
 );

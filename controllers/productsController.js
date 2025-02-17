@@ -1,12 +1,26 @@
 //Handles products CRUD operations
 import Product from '../models/ProductModel.js';
 import User from '../models/User.js';
+import Seller from '../models/sellerModel.js'
  
 import  cloudinary  from '../utils/cloudinary.js';
 export async function createProduct(req, res) {
     const senderId = req.user._id;
-    const { description, price, image, category } = req.body;
+    const { description, price, image, category, title } = req.body;
     try {
+        const productCount = await Product.countDocuments({uploadedBy:senderId});
+        //const maxProductAllowed = 10;
+        const seller = await Seller.findOne({sellerId:senderId});
+        if (!seller) {
+            return res.status(404).json({ message: "Seller not found." });
+        }
+
+        
+        const maxSellerProductAllowed = seller.uploadLimit
+        //console.log("max allowed products are:", maxSellerProductAllowed)
+        if (productCount >= maxSellerProductAllowed){
+            return res.status(403).json({message:`Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`})
+        }
         // Ensure an image is uploaded
         if (!image) {
             return res.status(400).json({ message: "No image file uploaded." });
@@ -22,12 +36,13 @@ export async function createProduct(req, res) {
             uploadedBy:senderId,
             description,
             price,
+            title,
             imageUrl: result.secure_url, // Save Cloudinary image URL in MongoDB
             category
         });
 
         await newProduct.save();
-        console.log('the product created success')
+        //console.log('the product created success')
         res.status(200).json({ message: 'Product created successfully', newProduct });
     } catch (error) {
         console.error("Error creating product: ", error, req.body);
@@ -49,7 +64,9 @@ export async function getProduct(req, res) {
     try {
         const product = await Product.findById(req.params.id);
         if (!product) {
+            //console.log("product not found")
             return res.status(404).json({ message: "Product not found" });
+            
         }
         // Extract the sellerId from the product document
         const sellerId = product.uploadedBy;
@@ -88,7 +105,7 @@ export async function searchProduct(req, res) {
     }
 }
 export async function getCategoryProduct(req,res) {
-    console.log("category product is being search")
+    //console.log("category product is being search")
     const { category } = req.query;
     try {
         const products = await Product.find({category});
@@ -152,20 +169,23 @@ export async function getSellerProducts(req, res) {
     };
 };
 
-export async function getAllProductsForAdmin(req, res) {
+// Get total number of products for a specific user
+export async function getUserProductCount(req, res) {
     try {
-        // Fetch all products and count the total number
-        const products = await Product.find().sort({ createdAt: -1 });
-       
-        const totalProducts = await Product.countDocuments();
+        const { sellerId } = req.query; // Extract sellerId from query params
+        //console.log("sellerId",sellerId)
+        if (!sellerId) {
+            return res.status(400).json({ error: 'Seller ID is required' });
+        }
 
-        // Respond with both the total number and the products
-        res.status(200).json({
-            total: totalProducts,
-            products: products,
-        });
+        const productCount = await Product.countDocuments({ uploadedBy: sellerId });
+
+        //console.log(productCount)
+        res.status(200).json({ sellerId, totalProducts: productCount });
     } catch (error) {
-        res.status(500).json({ message: "Failed to get the products" });
+        console.error('Error fetching product count:', error.message);
+        res.status(500).json({ error: 'Failed to get product count' });
     }
 }
+
 

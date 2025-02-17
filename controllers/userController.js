@@ -1,35 +1,15 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from "bcrypt";
-import message from '../models/message.js';
-const { sign, verify }=jwt;
+
+const { sign, verify, TokenExpiredError }=jwt;
 const { hash, compare } =bcrypt;
 
-//register controller
+
 const userController={
-/*
-  // Store the FCM token in the database
-async saveToken (req, res){
-  const { userId, token } = req.body;
-  try {
-    // Check if user exists, and if so, update their token
-    let user = await User.findOne({ userId });
-    if (user) {
-      user.fcmToken = token;
-    } else {
-      // Create new user with token if not found
-      console.log('no user found in database  to save token')
-    }
-    await user.save();
-    res.status(200).json({ success: true, message: 'Token saved successfully.' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error saving token.', error });
-  }
-},
-*/
   async  register(req, res) {
-    const { email, name, universityName, phoneNumber, password,expoPushToken } = req.body;
-    console.log(expoPushToken)
+    const { email, name, universityName, phoneNumber, password} = req.body;
+    
     try {
         // Check if user already exists
         const user =  await User.findOne({ $or: [{ email }, { phoneNumber }] });
@@ -49,7 +29,6 @@ async saveToken (req, res){
             universityName,
             phoneNumber,
             role: 'customer',
-            expoPushToken,
         });
         // Save the user in the database
         await newUser.save();
@@ -62,26 +41,10 @@ async saveToken (req, res){
 
 },
 
-async verifySellerApplication(req, res){
-  try {
-    const { userId, status, reason } = req.body;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    user.applicationStatus = status; // 'approved' or 'declined'
-    if (status === 'approved') user.role = 'seller';
-    await user.save();
-
-    res.status(200).json({ message: `Application ${status}` });
-  } catch (error) {
-    res.status(500).json({ error: 'Error verifying application' });
-  }
-},
-
 // Login Controller
 async  login(req, res) {
-    const { email, password, expoPushToken } = req.body;
+  //console.log("login controller called")
+    const { email, password} = req.body;
     try {
         // Check if user exists
         const user = await User.findOne({ email });
@@ -94,16 +57,13 @@ async  login(req, res) {
             return res.status(400).json({ message: 'Invalid credentials: password does not match' });
         }
         
-        // Update the Expo push token if provided
-        if (expoPushToken) {
-          user.expoPushToken = expoPushToken;
-          await user.save();
-        }
         // Generate a JWT token
-        const accesstoken = sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '1d' });
+        const accessToken = sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '15m' });
+        
         const refreshToken = sign({userId: user._id}, process.env.JWT_REFRESH_SECRET, {expiresIn:'7d'});
 
-        res.json({ accesstoken,refreshToken, message: 'Login successful', email: user.email, name: user.name, _id:user._id});
+        //console.log("login controller ended refresh and access tokens:", refreshToken,accessToken)
+        res.json({ accessToken,refreshToken, message: 'Login successful', email: user.email, name: user.name, _id:user._id});
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -133,6 +93,7 @@ async checkAuth(req,res){
 
 // Refresh token controller to generate a new access token
 async refreshToken(req, res) {
+  console.log("refresh Token controller called")
     const { refreshToken } = req.body;
   
     if (!refreshToken) {
@@ -151,36 +112,45 @@ async refreshToken(req, res) {
       const accessToken = sign(
         { userId: decoded.userId },
         process.env.JWT_SECRET,
-        { expiresIn: '1d' }
+        { expiresIn: '15m' }
       );
-      if(accessToken){
-        console.log("I generated new  access token from refresh token for you")
-      }
-  
-      // Send the new access token to the client
+
       res.json({ accessToken });
     } catch (error) {
-      console.error(error);
+      if (error instanceof TokenExpiredError) {
+        console.log("expired refresh token ")
+        return res.status(403).json({ message: 'Refresh token expired. Please log in again.' });
+      }
       res.status(500).json({ message: 'Error refreshing access token' });
     }
   },
-
-async getAllUsers(req,res){
+async updateExpoToken(req,res){
   try {
-    const users = await User.find();
-    const totalUsers = await User.countDocuments();
-    // Respond with both the total number and the products
-    res.status(200).json({
-      total: totalUsers,
-      users,
+    const {expoPushToken} = req.body;
+    if(!expoPushToken){
+      return res.status(400).json({ message: 'Expo push token is required' });
+    }
+
+    // Find user and update token
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { expoPushToken } },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ 
+      message: 'Expo push token updated successfully',
+      expoPushToken: user.expoPushToken
     });
-    
   } catch (error) {
-    console.error(error);
-    res.status(500).json({message:"error fetching users"});
+    console.error('Error updating Expo push token:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 }
-
 }
 export default userController;
  
