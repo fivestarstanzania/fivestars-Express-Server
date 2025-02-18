@@ -20,8 +20,6 @@ import cookieParser from "cookie-parser"
 
 dotenv.config();
 
-
-const port =3000
 const PORT=process.env.PORT;
 
 
@@ -58,7 +56,7 @@ app.get('/protected', authMiddleware, (req, res) => {
 });
 
 
-server.listen(PORT || port, ()=>{
+server.listen(PORT, ()=>{
   console.log(`Example app listening on port ${PORT}`)
   connectDB()
 })

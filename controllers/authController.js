@@ -1,8 +1,8 @@
 //handle login register and auth
-import bcrypt from "bcrypt";
+import bcryptjs from "bcryptjs";
 import Admin from '../models/Admin.js';
 import { redisClient } from "../config/redis.js";
-const { hash, compare } =bcrypt;
+const { hash, compare } =bcryptjs;
 
 export const signup = async (req, res) => {
     

@@ -1,9 +1,9 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
-import bcrypt from "bcrypt";
+import bcryptjs from "bcryptjs";
 
 const { sign, verify, TokenExpiredError }=jwt;
-const { hash, compare } =bcrypt;
+const { hash, compare } =bcryptjs;
 
 
 const userController={
