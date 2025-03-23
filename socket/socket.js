@@ -6,7 +6,6 @@ import express from "express";
 const app = express();
 const server = http.createServer(app);
 
-// Track connected users: { userId: socketId }
 const userSocketMap = {}
 
 const io = new Server(server, {
