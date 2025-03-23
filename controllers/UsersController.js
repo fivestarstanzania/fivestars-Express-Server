@@ -2,7 +2,7 @@ import { OAuth2Client } from "google-auth-library"
 import dotenv from 'dotenv';
 import User from "../models/User.js"
 import jwt from 'jsonwebtoken';
-import Blacklist from "../models/Blacklist.js";
+import Blacklist from "../models/BlacklistModel.js";
 
 const { sign, verify, TokenExpiredError }=jwt;
 dotenv.config();

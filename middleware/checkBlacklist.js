@@ -1,4 +1,4 @@
-import Blacklist from "../models/Blacklist.js";
+import Blacklist from "../models/BlacklistModel.js";
 
 export  const  checkBlacklist = async (req, res, next) => {
     const { refreshToken } = req.body;
