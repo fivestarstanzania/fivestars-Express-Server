@@ -6,7 +6,7 @@ import Blacklist from "../models/Blacklist.js";
 
 const { sign, verify, TokenExpiredError }=jwt;
 dotenv.config();
-
+  
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(CLIENT_ID);

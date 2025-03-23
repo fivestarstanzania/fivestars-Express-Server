@@ -7,3 +7,5 @@ const  blacklistSchema = new mongoose.Schema({
 });
 blacklistSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 7 }); 
 export default model("Blacklist",  blacklistSchema);
+
+
