@@ -29,7 +29,12 @@ export async function createProduct(req, res) {
         // Upload image to Cloudinary
         //const imageFile = req.file.path; // This is the uploaded image file from the FormData
         const result = await cloudinary.uploader.upload(image, {
-            folder:'products'
+            folder:'products',
+            quality: 'auto',
+            fetch_format: 'auto',
+            width: 800, // Max width for mobile
+            crop: 'limit',
+            format: 'webp' // Modern format
         });
 
         const newProduct = new Product({
@@ -52,6 +57,24 @@ export async function createProduct(req, res) {
 export async function getAllProducts(req, res) {
 
     try {
+       /* const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [products, total] = await Promise.all([
+            Product.find()
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Product.countDocuments()
+        ]);
+
+        res.status(200).json({
+            products,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+        */
         const products = await Product.find().sort({ createdAt: -1 });
         res.status(200).json(products);
         //console.log(products)

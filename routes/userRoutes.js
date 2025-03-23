@@ -1,15 +1,14 @@
-import express from 'express';
-import userController from '../controllers/userController.js';
-import { validateAndSanitizeRegistration, validateAndSanitizeLogin } from '../middleware/validationMiddleware.js';
-import { handleValidationErrors } from '../middleware/errorHandlingMiddleware.js';
-import {authMiddleware} from '../middleware/authMiddleware.js';
+import express from "express"; 
+import { checkAuth, logout, refreshToken, registerUsers, updateExpoToken } from "../controllers/UsersController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { checkBlacklist } from "../middleware/checkBlacklist.js";
 
-const router = express.Router();
+const router=express.Router();
 
-// POST route for user registration
-router.post('/register', validateAndSanitizeRegistration, handleValidationErrors, userController.register);
-router.post("/login", validateAndSanitizeLogin, handleValidationErrors, userController.login);
-router.post('/refresh-token', userController.refreshToken);
-router.post('/update-expo-push-token', authMiddleware, userController.updateExpoToken)
-router.get('/', authMiddleware, userController.checkAuth);
+
+router.post('/google-login', registerUsers)
+router.post('/update-expo-push-token', authMiddleware, updateExpoToken)
+router.post('/refresh-token',checkBlacklist, refreshToken)
+router.post('/logout', logout)
+router.get('/', authMiddleware, checkAuth);
 export default router;

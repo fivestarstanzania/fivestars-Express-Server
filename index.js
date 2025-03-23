@@ -33,8 +33,9 @@ app.use(cors({
 app.use(sessionConfig)
 app.use(cookieParser());
 
+
 app.use('/api/sameja/admin', adminRoutes)
-app.use('/api/products',authMiddleware,  productRouter)
+app.use('/api/products',  productRouter)
 app.use('/api/users',  userRoutes)
 app.use('/api/feedback',authMiddleware,  feedbackRoutes)
 app.use('/api/messages', messageRoute)
@@ -42,6 +43,7 @@ app.use("/api/orders", authMiddleware, orderRoutes);
 app.use("/api/notifications", authMiddleware, notificationRoutes);
 app.use('/api/sellers', sellerRoutes)
 app.use('/api/reviews', reviewsRoutes)
+
 
 
 

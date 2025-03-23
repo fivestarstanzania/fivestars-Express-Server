@@ -99,6 +99,7 @@ export async function createOrder(req, res) {
     // Get seller's Expo push token
     const sellerDetail = await User.findById(seller);
     const expoPushToken = sellerDetail.expoPushToken;
+    //console.log(expoPushToken)
 
     if (expoPushToken) {
       try {
@@ -106,6 +107,8 @@ export async function createOrder(req, res) {
           to: expoPushToken,
           title: newNotification.title,
           body: newNotification.message,
+          priority:'high',
+          sound: 'default',
         });
         //console.log('Notification sent on creating order:', response.data);
       } catch (error) {

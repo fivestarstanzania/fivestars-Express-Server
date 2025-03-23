@@ -18,5 +18,8 @@ const ProductSchema = new Schema(
 
 ProductSchema.index({description: 'text' });
 ProductSchema.index({title: 'text' });
+ProductSchema.index({ category: 1 });
+ProductSchema.index({ uploadedBy: 1 });
+ProductSchema.index({ createdAt: -1 });
 
 export default model('Product', ProductSchema);
