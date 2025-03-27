@@ -5,7 +5,7 @@ import {
 
 const router = express.Router();
 
-router.get("/get/:id", getSellerById);
+router.get("/get/:userId", getSellerById);
 
 
 

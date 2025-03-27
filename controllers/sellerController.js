@@ -4,16 +4,17 @@ import Review from '../models/ReviewsModel.js'
 
 export const getSellerById = async (req, res) => {
   try { 
-    const { id } = req.params; // user ID
+    const { userId } = req.params; // user ID
+    console.log("userId:", userId)
 
     // Check if the user exists in the User collection
-    const userExists = await User.findById(id);
+    const userExists = await User.findById(userId);
     if (!userExists) {
       return res.status(404).json({ message: "User not found in the User database" });
     }
 
     // Check if a seller exists with the same sellerId as the provided user ID
-    const seller = await Seller.findOne({ sellerId: id });
+    const seller = await Seller.findOne({ userId });
     if (!seller) {
       return res.status(404).json({ message: "Seller not found for the provided user ID" });
     }

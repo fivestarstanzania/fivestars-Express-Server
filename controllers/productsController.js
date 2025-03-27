@@ -3,24 +3,31 @@ import Product from '../models/ProductModel.js';
 import User from '../models/User.js';
 import Seller from '../models/sellerModel.js'
  
-import  cloudinary  from '../utils/cloudinary.js';
-export async function createProduct(req, res) {
-    const senderId = req.user._id;
-    const { description, price, image, category, title } = req.body;
+import  {cloudinary}  from '../utils/cloudinary.js';
+import { isSellerBanned } from '../utils/isSellerBanned.js';
+export async function createProduct(req, res) { 
     try {
-        const productCount = await Product.countDocuments({uploadedBy:senderId});
-        //const maxProductAllowed = 10;
-        const seller = await Seller.findOne({sellerId:senderId});
+        const userId = req.user._id;
+        const { description, price, image, category, title } = req.body;
+        const seller = await Seller.findOne({userId});
         if (!seller) {
             return res.status(404).json({ message: "Seller not found." });
         }
+        const sellerId = seller._id;
 
+        if(await isSellerBanned(sellerId)){
+            return res.status(403).json({ message: "You are banned from adding products." });
+        }
+
+        const productCount = await Product.countDocuments({sellerId});
+        //const maxProductAllowed = 10;
         
         const maxSellerProductAllowed = seller.uploadLimit
         //console.log("max allowed products are:", maxSellerProductAllowed)
         if (productCount >= maxSellerProductAllowed){
             return res.status(403).json({message:`Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`})
         }
+
         // Ensure an image is uploaded
         if (!image) {
             return res.status(400).json({ message: "No image file uploaded." });
@@ -38,12 +45,13 @@ export async function createProduct(req, res) {
         });
 
         const newProduct = new Product({
-            uploadedBy:senderId,
+            userId,
             description,
             price,
             title,
             imageUrl: result.secure_url, // Save Cloudinary image URL in MongoDB
-            category
+            category,
+            sellerId,
         });
 
         await newProduct.save();
@@ -54,6 +62,7 @@ export async function createProduct(req, res) {
         res.status(500).json({ message: "Failed to create the product", error: error.message });
     }
 }
+
 export async function getAllProducts(req, res) {
 
     try {
@@ -75,30 +84,43 @@ export async function getAllProducts(req, res) {
             currentPage: page
         });
         */
-        const products = await Product.find().sort({ createdAt: -1 });
+        const unfilteredProducts = await Product.find().sort({ createdAt: -1 });
+        const products = unfilteredProducts.filter(product => product.sellerStatus !== "Banned");
+
         res.status(200).json(products);
         //console.log(products)
     } catch (error) {
         res.status(500).json("Failed to get the products");
     }
 }
+
 export async function getProduct(req, res) {
 
     try {
-        const product = await Product.findById(req.params.id);
-        if (!product) {
-            //console.log("product not found")
-            return res.status(404).json({ message: "Product not found" });
-            
-        }
-        // Extract the sellerId from the product document
-        const sellerId = product.uploadedBy;
+        // 1. Find product with populated seller
+        const product = await Product.findById(req.params.id)
+            .populate("sellerId", "activityStatus") // Only populate necessary fields
+            .lean(); // Convert to plain JS object for better performance
 
-        // Find the user by sellerId
-        const seller = await User.findById(sellerId);
-        if (!seller) {
-            return res.status(404).json({ message: "Seller not found" });
+        // 2. Validate product and seller status
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
         }
+        
+        if (product.sellerId?.activityStatus === "Banned") {
+            return res.status(403).json({ message: "This product is unavailable because the seller is banned" });
+        }
+
+        // 3. Get additional seller info
+        const seller = await User.findById(product.userId)
+            .select("name") // Only get the name field
+            .lean();
+
+        if (!seller) {
+            return res.status(404).json({ message: "Seller information not available" });
+        }
+
+
 
         // Construct the final response
         const responseData = {
@@ -106,8 +128,7 @@ export async function getProduct(req, res) {
             sellerName: seller.name
         };
 
-       
-
+        console.log(product)
         // Send the response
         res.status(200).json(responseData);
 
@@ -116,98 +137,230 @@ export async function getProduct(req, res) {
         res.status(500).json("Failed to get all the product");
     }
 }
+
 export async function searchProduct(req, res) {
-
     try {
-        const key = req.params.key;
-        const result = await Product.find({ $text: { $search: key } });
-        res.json(result);
-            
+        const searchTerm = req.params.key.trim(); // Trim whitespace from search term
+        console.log("search term:", searchTerm)
+        if (!searchTerm || searchTerm.length < 2) {
+            return res.status(400).json({ 
+                message: "Search term must be at least 2 characters long" 
+            });
+        }
+
+        // Search products with text index and filter banned sellers in single query
+        const products = await Product.find({
+            $and: [
+                { $text: { $search: searchTerm } },
+                { sellerStatus: { $ne: "Banned" } } // Filter by sellerStatus in Product
+            ]
+        })
+        .populate({
+            path: 'sellerId',
+            select: 'name activityStatus', // Only get necessary fields
+            match: { activityStatus: { $ne: "Banned" } } // Ensure populated sellers aren't banned
+        })
+        .lean(); // Convert to plain JS object
+
+        if (products.length === 0) {
+            return res.status(404).json({ 
+                message: "No products found matching your search",
+                suggestions: ["Try different keywords", "Check your spelling"]
+            });
+        }
+
+        res.json(products);
+
     } catch (error) {
-        res.status(500).json("Failed to get the product");
+        console.error("Search error:", error);
+        res.status(500).json({ 
+            message: "An error occurred during search",
+            ...(process.env.NODE_ENV === 'development' && { 
+                error: error.message 
+            })
+        });
     }
 }
+
+
 export async function getCategoryProduct(req,res) {
-    //console.log("category product is being search")
-    const { category } = req.query;
     try {
-        const products = await Product.find({category});
-        res.json( products );
-    } catch (error) {
+        const { category } = req.query;
+        
+        if (!category) {
+            return res.status(400).json({ error: "Category parameter is required" });
+        }
 
-        res.status(500).json({ error: "Failed to fetch products" });
+        const products = await Product.find({ 
+            category,
+            'sellerId.activityStatus': { $ne: "Banned" } 
+        })
+        .populate({
+            path: 'sellerId',
+            select: 'name activityStatus',
+            match: { activityStatus: { $ne: "Banned" } }
+        })
+        .lean();
+
+        const validProducts = products.filter(product => product.sellerId);
+
+        res.json(validProducts);
+    } catch (error) {
+        console.error("Category product error:", error);
+        res.status(500).json({ 
+            error: "Failed to fetch products",
+            ...(process.env.NODE_ENV === 'development' && { details: error.message })
+        });
     }
 }
+
 // Edit a product
-export async function editProduct(req, res){
+export async function editProduct(req, res) {
     try {
-      const { productId, name, description, price } = req.body;
-  
-      const product = await Product.findById(productId);
-      if (!product) return res.status(404).json({ error: 'Product not found' });
-  
-      product.name = name;
-      product.description = description;
-      product.price = price;
-      await product.save();
-  
-      res.status(200).json({ message: 'Product updated successfully!', product });
+        const { productId, name, description, price } = req.body;
+
+        const product = await Product.findById(productId)
+            .populate('sellerId', 'activityStatus');
+
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        if (product.sellerId?.activityStatus === "Banned") {
+            return res.status(403).json({ error: 'Cannot edit product from banned seller' });
+        }
+
+        product.name = name;
+        product.description = description;
+        product.price = price;
+        
+        await product.save();
+
+        res.status(200).json({ 
+            message: 'Product updated successfully!', 
+            product: {
+                id: product._id,
+                name: product.name,
+                price: product.price,
+                description: product.description
+            }
+        });
     } catch (error) {
-      res.status(500).json({ error: 'Error updating product' });
+        console.error("Edit product error:", error);
+        res.status(500).json({ 
+            error: 'Error updating product',
+            ...(process.env.NODE_ENV === 'development' && { details: error.message })
+        });
     }
-};
+}
+
+
 // Delete a product
 export async function deleteProduct(req, res){
-  try {
-    const { productId } = req.params;
-    //console.log(productId)
+    try {
+        const { productId } = req.params;
 
-    const product = await Product.findById(productId);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    //console.log("productFound")
-    await Product.deleteOne({ _id: productId });
-    //console.log("product deleted")
-    res.status(200).json({ message: 'Product deleted successfully!' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error deleting product' });
-  }
+        const product = await Product.findById(productId)
+            .populate('sellerId', 'activityStatus');
+
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        if (product.sellerId?.activityStatus === "Banned") {
+            return res.status(403).json({ error: 'Cannot delete product from banned seller' });
+        }
+
+        const publicId = product.imageUrl.split('/').pop().split('.')[0];
+        await cloudinary.uploader.destroy(publicId);
+
+        await Product.deleteOne({ _id: productId });
+
+        res.status(200).json({ 
+            message: 'Product deleted successfully!' 
+        });
+    } catch (error) {
+        console.error("Delete product error:", error);
+        res.status(500).json({ 
+            error: 'Error deleting product',
+            ...(process.env.NODE_ENV === 'development' && { details: error.message })
+        });
+    }
 };
+
 
 // Fetch products by seller ID
 export async function getSellerProducts(req, res) {
     try {
-      const { sellerId } = req.query; // Extract sellerId from query params
-      const uploadedBy = sellerId
-      if (!uploadedBy) {
-        return res.status(400).json({ error: 'Seller ID is required' });
-      }
+        const { userId } = req.query;
+        console.log("userId:",userId) 
+        if (!userId) {
+            return res.status(400).json({ error: 'Seller user ID is required' });
+        }
+        
+        const seller = await  Seller.findOne({userId}).select('activityStatus');
+        console.log("text1") 
+        if(!seller){
+            return res.status(404).json({ message: "Seller with that userId not found" });
+        }
 
-      const products = await Product.find({ uploadedBy }).sort({createdAt: -1});
+        if (seller?.activityStatus === "Banned") {
+            return res.status(403).json({ error: 'This seller account is banned' });
+        }
+        console.log("text2")
+        const sellerId = seller._id;
 
-      res.status(200).json( products );
-      //console.log(products)
+        const products = await Product.find({ sellerId })
+        .sort({ createdAt: -1 })
+        .lean();
+        console.log("text3")
+        res.status(200).json(products);
+        console.log(products)
     } catch (error) {
-      console.error('Error fetching seller products:', error.message);
-      res.status(500).json({ error: 'Internal Server Error' });
-    };
+            console.error('Seller products error:', error);
+            res.status(500).json({ 
+                error: 'Failed to fetch products',
+                ...(process.env.NODE_ENV === 'development' && { details: error.message })
+            });
+        }
+        
 };
 
 // Get total number of products for a specific user
 export async function getUserProductCount(req, res) {
     try {
-        const { sellerId } = req.query; // Extract sellerId from query params
-        //console.log("sellerId",sellerId)
+        const { sellerId } = req.query;
+
         if (!sellerId) {
             return res.status(400).json({ error: 'Seller ID is required' });
         }
 
-        const productCount = await Product.countDocuments({ uploadedBy: sellerId });
+        // Verify seller status first
+        const seller = await User.findById(sellerId).select('activityStatus');
+        if (!seller) {
+            return res.status(404).json({ error: 'Seller not found' });
+        }
 
-        //console.log(productCount)
-        res.status(200).json({ sellerId, totalProducts: productCount });
+        if (seller.activityStatus === "Banned") {
+            return res.status(200).json({ 
+                sellerId, 
+                totalProducts: 0,
+                message: 'Seller is banned' 
+            });
+        }
+
+        const productCount = await Product.countDocuments({ userId: sellerId });
+
+        res.status(200).json({ 
+            sellerId, 
+            totalProducts: productCount 
+        });
     } catch (error) {
-        console.error('Error fetching product count:', error.message);
-        res.status(500).json({ error: 'Failed to get product count' });
+        console.error('Product count error:', error);
+        res.status(500).json({ 
+            error: 'Failed to get product count',
+            ...(process.env.NODE_ENV === 'development' && { details: error.message })
+        });
     }
 }
 

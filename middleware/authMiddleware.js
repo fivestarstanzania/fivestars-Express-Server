@@ -54,55 +54,16 @@ const extractSessionId = (cookieValue) => {
 
 
 export const requireAdminAuth =   async(req, res, next) => {
-    try {
-        if (!req.sessionID) {
-            console.log(`no user sessionId`);
-            return res.json({ message: 'Unauthorized no sessionId' });
-        }
-        console.log(`user sessionId`, req.sessionID );
-
+    try {  
         if (!req.session || !req.session.user) {
             return res.status(401).json({  message: 'Unauthorized' });
         } 
-        console.log(`user session`, req.session.user );
-
-        //after that is extra
-        const admin = await Admin.findById(req.session.user.id);
-        if (!admin) {
-            req.session.destroy();
-            console.log(`no that admin`);
-            return res.json({ isAuthenticated: false });
-        }
-
-        const rawCookie = req.cookies['connect.id'];
-        const sessionId = extractSessionId(rawCookie);
-        if (!sessionId) {
-            return res.status(401).json({ error: "Invalid session format" });
-        }
-
-        store.get(sessionId, (err,session) =>{
-            if(err){
-                console.error("Redis error:", err);
-                return res.status(500).json({ error: "Internal Server Error" });
-            }
-            if (!session) {
-                return res.status(401).json({ error: "Session expired or invalid" });
-            }
-            console.log("Valid session:", session);
-
-        })
-
-        if (!req.cookies['connect.id']) {
-            return res.status(401).json({ message: 'Unauthorized: Missing session cookie' });
-        }
-        console.log('Cookies:', req.cookies);
         next();
     } catch (error) {
-        console.log(error)
-        res.status(500).json({ message: 'Auth check failed', error: error.message });
+        console.error('Authentication error:', error);
+        return res.status(500).json({ message: 'Internal Server Error', error: error.message });
     }
 };
-
 
 // Middleware to check if user is an admin
 export const checkAdmin = (req, res, next) => {

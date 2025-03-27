@@ -10,14 +10,17 @@ import { deleteUser, getAllUsers } from '../controllers/adminController/usersCon
 import { getAllOrdersForAdmin } from '../controllers/adminController/ordersController.js';
 import { getAllNotificationsForAdmin } from '../controllers/adminController/notificationsController.js';
 import { getAllFeedback } from '../controllers/adminController/feedbackController.js';
-import { createSeller, deleteSellerById, getAllSellers, getSellerById, upload } from '../controllers/adminController/sellerController.js';
+import { banSeller, createSeller, deleteSellerById, getAllSellers, getSellerById, updateUploadLimit, upload } from '../controllers/adminController/sellerController.js';
 import { requireAdminAuth } from '../middleware/authMiddleware.js';
+import { deleteReview, getAllReviews } from '../controllers/adminController/review.js';
+import { validateUploadLimit } from '../middleware/validateUploadLimit.js';
+import { validateAndSanitizeAdminLogin, validateAndSanitizeAdminRegistration } from '../middleware/validationMiddleware.js';
 
-
+ 
 const router = express.Router();
 
-router.post('/signup', signup);
-router.post('/login', login);
+router.post('/signup', validateAndSanitizeAdminRegistration, signup);
+router.post('/login', validateAndSanitizeAdminLogin, login);
 router.post('/logout', logout);
 router.get('/check', checkAuth);
 
@@ -33,9 +36,13 @@ router.get("/notifications",requireAdminAuth, getAllNotificationsForAdmin);
 
 router.get('/feedbacks',requireAdminAuth, getAllFeedback);
 
-router.post("/sellers/create",upload.single('profileImage'),requireAdminAuth, createSeller);
+router.post("/sellers/create",upload.single('profileImage'), createSeller);
 router.get("/sellers/get/:id",requireAdminAuth, getSellerById);
 router.get('/sellers/all',requireAdminAuth, getAllSellers)
-router.delete("/sellers/delete/:id",requireAdminAuth, deleteSellerById);
+router.delete("/sellers/delete/:sellerId", deleteSellerById);
+router.put('/sellers/update/:id', validateUploadLimit, requireAdminAuth, updateUploadLimit )
+router.put('/sellers/ban/:sellerId', requireAdminAuth, banSeller)
 
+router.get('/reviews/all', requireAdminAuth, getAllReviews);
+router.delete('/reviews/delete/:reviewId',requireAdminAuth, deleteReview )
 export default router;

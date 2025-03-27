@@ -8,8 +8,6 @@ export const signup = async (req, res) => {
     
   try {
     const { name, password } = req.body;
-
-   
     // Check if admin exists
     const existingAdmin = await Admin.findOne({ name });
     if (existingAdmin) {
@@ -38,7 +36,6 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
-
     const isMatch = await compare(password, admin.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -68,7 +65,7 @@ export const login = async (req, res) => {
 };
 
 export const logout = (req, res) => {
-  console.log("Session before destruction :", req.sessionID);
+  //console.log("Session before destruction :", req.sessionID);
   req.session.destroy((err) => {
     if (err) {
       console.error("Session destruction error:", err);
@@ -77,7 +74,7 @@ export const logout = (req, res) => {
     res.clearCookie('connect.id', { 
       path: '/',
       httpOnly: true,
-      sameSite:'lax',
+      sameSite:'strict',
       secure: process.env.NODE_ENV === 'production',
      });
     //console.log("Session after destruction :", req.sessionID);
@@ -88,9 +85,9 @@ export const logout = (req, res) => {
 export const checkAuth = (req, res) => {
   if (req.session.user) {
     res.json({ isAuthenticated: true, user: req.session.user });
-    //console.log("is authenticated", req.session.user)
+    console.log("is authenticated", req.session.user)
   } else {
     res.json({ isAuthenticated: false });
-    //console.log("not authenticated")
+    console.log("not authenticated")
   }
 };

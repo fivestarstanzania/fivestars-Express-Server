@@ -9,22 +9,26 @@ import { Socket } from "socket.io";
 
 export async function createOrder(req, res) {
   const buyerId = req.user._id;
+  //console.log("check1")
   try {
-    const { buyer, seller, status, productId } = req.body;
+    const { buyer, sellerUserId, status, productId } = req.body;
 
     if (!buyer || !buyer.name || !buyer.contact || !buyer.address) {
-        return res.status(400).json({ message: "Buyer details are incomplete" });
+      console.log("Buyer details are incomplete")
+      return res.status(400).json({ message: "Buyer details are incomplete" });
     }
 
-    if (!seller) {
-        return res.status(400).json({ message: "Seller ID is required" });
+    if (!sellerUserId) {
+      console.log("Seller ID is required")
+      return res.status(400).json({ message: "Seller ID is required" });
     }
 
     if (!productId) {
-        return res.status(400).json({ message: "Product ID is required" });
+      console.log("Product ID is required")
+      return res.status(400).json({ message: "Product ID is required" });
     }
-
-    const sellerDetails = await User.findById(seller);
+    //console.log("check2")
+    const sellerDetails = await User.findById(sellerUserId);
     if (!sellerDetails) {
       return res.status(404).json({ message: "Seller not found" });
     }
@@ -32,7 +36,7 @@ export async function createOrder(req, res) {
     if (sellerDetails.role !== "seller") {
         return res.status(403).json({ message: "The specified user is not a seller" });
     }
-
+    //console.log("check3")
     const productDetails = await Product.findById(productId);
     if (!productDetails) {
       return res.status(404).json({ message: "Product not found" });
@@ -51,7 +55,6 @@ export async function createOrder(req, res) {
         name: buyer.name, 
         contact:buyer.contact,
         address:buyer.address,
-
       },
       seller:{
         id: sellerDetails._id, 
@@ -65,7 +68,7 @@ export async function createOrder(req, res) {
         
       },
     });
-
+    //console.log("check4")
     // Save the order to the database
     await newOrder.save();
     
@@ -74,7 +77,7 @@ export async function createOrder(req, res) {
     const title = "New order"
     const message = `New order number ${orderNumber} has been placed.`;
     const newNotification = new Notification({ 
-      receiverId: seller, 
+      receiverId: sellerUserId, 
       title,
       message,
       type: "Order",
@@ -88,7 +91,7 @@ export async function createOrder(req, res) {
     await newNotification.save();
     //console.log(`saved notification`)
 
-
+    //console.log("check5")
     // use socket to send update
     const sellerSocketId = getReceiverSocketId(newOrder.seller.id.toString());
     
@@ -97,10 +100,10 @@ export async function createOrder(req, res) {
     }
     
     // Get seller's Expo push token
-    const sellerDetail = await User.findById(seller);
+    const sellerDetail = await User.findById(sellerUserId);
     const expoPushToken = sellerDetail.expoPushToken;
     //console.log(expoPushToken)
-
+    //console.log("check6")
     if (expoPushToken) {
       try {
         const response = await axios.post('https://exp.host/--/api/v2/push/send', {
@@ -110,11 +113,13 @@ export async function createOrder(req, res) {
           priority:'high',
           sound: 'default',
         });
+        //console.log("check7")
         //console.log('Notification sent on creating order:', response.data);
       } catch (error) {
         console.error('Error sending notification:', error);
       }
     }  
+    //console.log("check8")
     res.status(201).json({ message: "Order created and seller notified!", order: newOrder });
     
   } catch (error) {
@@ -210,11 +215,14 @@ export async function updateOrderStatus(req, res) {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    
     // Update the status
     order.status = status;
 
     // Save the updated order
     await order.save();
+
+    //console.log("order:", order)
 
     // Notify the buyer about the status update
     const title = `Order ${status}`
@@ -231,7 +239,7 @@ export async function updateOrderStatus(req, res) {
       
     });
     await newNotification.save();
-
+    
     //use socket
     const buyerSocketId = getReceiverSocketId(order.buyer.id.toString());
     const sellerSocketId = getReceiverSocketId(order.seller.id.toString());
@@ -247,11 +255,12 @@ export async function updateOrderStatus(req, res) {
     }
     
 
-   
-
-    const user = await User.findById(order.buyer.id)
+  
+    const user = await User.findById(order.buyer.id.toString());
+    
     const expoPushToken = user.expoPushToken;
-    //console.log(expoPushToken)
+
+    
     if (expoPushToken) {
       try {
         const response = await axios.post('https://exp.host/--/api/v2/push/send', {

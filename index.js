@@ -4,7 +4,6 @@ import cors from 'cors';
 import productRouter from './routes/productRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
-import messageRoute from './routes/messageRoute.js'
 import orderRoutes from './routes/orderRoutes.js';
 import notificationRoutes from "./routes/notificationRoutes.js";
 import sellerRoutes from './routes/sellerRoutes.js'
@@ -16,7 +15,7 @@ import { connectDB } from './config/db.js';
 import { app, server } from './socket/socket.js';
 import { sessionConfig } from './config/session.js';
 import cookieParser from "cookie-parser"
-
+import path from 'path'
 
 dotenv.config();
 
@@ -35,26 +34,20 @@ app.use(cookieParser());
 
 
 app.use('/api/sameja/admin', adminRoutes)
-app.use('/api/products',  productRouter)
+app.use('/api/products',authMiddleware,  productRouter)
 app.use('/api/users',  userRoutes)
 app.use('/api/feedback',authMiddleware,  feedbackRoutes)
-app.use('/api/messages', messageRoute)
 app.use("/api/orders", authMiddleware, orderRoutes);
 app.use("/api/notifications", authMiddleware, notificationRoutes);
-app.use('/api/sellers', sellerRoutes)
-app.use('/api/reviews', reviewsRoutes)
+app.use('/api/sellers',authMiddleware, sellerRoutes)
+app.use('/api/reviews', authMiddleware,reviewsRoutes)
 
 
 
 
 // Public route (no authentication required)
 app.get('/public', (req, res) => {
-  res.send('This is a public route, accessible to everyone!');
-});
-
-// Protected route (requires authentication)
-app.get('/protected', authMiddleware, (req, res) => {
-  res.send(`Welcome! You are authenticated as user ID: ${req.user.id}`);
+  res.sendFile(path.join(path.resolve(), 'index.html'));
 });
 
 

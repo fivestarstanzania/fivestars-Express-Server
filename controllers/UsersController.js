@@ -52,6 +52,7 @@ export const registerUsers =  async (req,res)=>{
 }
 
 export const checkAuth = async (req,res)=>{
+  console.log(req.user)
   try {
     res.status(200).json(req.user);
   } catch (error) {
@@ -61,8 +62,9 @@ export const checkAuth = async (req,res)=>{
 }
 
 export const logout = async (req,res) => {
+  console.log('log out functions')
   const refreshToken = req.body.refreshToken;
-
+  
   if (!refreshToken) {
     return res.status(400).json({message:'Refresh token required'});
   }
