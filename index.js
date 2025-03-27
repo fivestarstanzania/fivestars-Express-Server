@@ -28,6 +28,7 @@ app.use(urlencoded({limit:'50mb', extended:true}))
 app.use(cors({
   origin: process.env.CLIENT_URL, // frontend url
   credentials: true, //allow cookies to be sent
+  methods: ["GET", "POST", "PUT", "DELETE"],
 }));
 app.use(sessionConfig)
 app.use(cookieParser());
