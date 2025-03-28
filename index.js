@@ -24,6 +24,7 @@ const PORT=process.env.PORT;
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_PROD,
+  "https://fivestarstanzania.netlify.app"
 ];
 
 //Middlewares
@@ -39,7 +40,10 @@ app.use(cors({
   },
   credentials: true, 
   methods: ["GET", "POST", "PUT", "DELETE"],
+  exposedHeaders: ['set-cookie']
 }));
+
+app.set('trust proxy', 1); // Required for secure cookies on Render
 app.use(sessionConfig)
 app.use(cookieParser());
 

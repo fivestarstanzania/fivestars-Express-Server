@@ -13,8 +13,7 @@ export const sessionConfig = session({
   saveUninitialized: false,
 
   cookie: {
-    secure: 'true',
-    //secure:false, // make true for production  HTTPS-only in production
+    secure: true,
     httpOnly: true, 
     sameSite: 'none', // Prevent CSRF
     maxAge: 24 * 60 * 60 * 1000, // 24 hours

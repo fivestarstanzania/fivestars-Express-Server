@@ -78,8 +78,8 @@ export const logout = (req, res) => {
     res.clearCookie('connect.id', { 
       path: '/',
       httpOnly: true,
-      sameSite:'strict',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite:'none',
+      secure:'true',
      });
     //console.log("Session after destruction :", req.sessionID);
     res.json({ message: 'Logout successful' });
