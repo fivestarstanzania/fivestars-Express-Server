@@ -21,13 +21,23 @@ dotenv.config();
 
 const PORT=process.env.PORT;
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL_PROD,
+];
 
 //Middlewares
 app.use(json({limit:'50mb'}));
 app.use(urlencoded({limit:'50mb', extended:true}))
 app.use(cors({
-  origin: process.env.CLIENT_URL, // frontend url
-  credentials: true, //allow cookies to be sent
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true, 
   methods: ["GET", "POST", "PUT", "DELETE"],
 }));
 app.use(sessionConfig)
