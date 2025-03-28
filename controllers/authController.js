@@ -28,6 +28,7 @@ export const signup = async (req, res) => {
 };
 
 export const login = async (req, res) => {
+  console.log("check1")
   try {
     const { name, password } = req.body;
 
@@ -35,7 +36,7 @@ export const login = async (req, res) => {
     if (!admin) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    
+    console.log("check2")
     const isMatch = await compare(password, admin.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -47,7 +48,7 @@ export const login = async (req, res) => {
         console.error("Session regeneration error:", err);
         return res.status(500).json({ message: "Session regeneration failed" });
       }
-
+      console.log("check3")
       req.session.user = {
          id: admin._id, 
          name: admin.name, 
@@ -62,6 +63,7 @@ export const login = async (req, res) => {
         
     });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

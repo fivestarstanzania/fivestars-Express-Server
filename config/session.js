@@ -13,10 +13,10 @@ export const sessionConfig = session({
   saveUninitialized: false,
 
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: 'true',
     //secure:false, // make true for production  HTTPS-only in production
     httpOnly: true, 
-    sameSite: 'strict', // Prevent CSRF
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    sameSite: 'none', // Prevent CSRF
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
   }
 });
