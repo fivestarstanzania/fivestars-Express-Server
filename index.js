@@ -1,4 +1,3 @@
-
 import  { json, urlencoded } from 'express';
 import cors from 'cors';
 import productRouter from './routes/productRoutes.js';
@@ -16,6 +15,7 @@ import { app, server } from './socket/socket.js';
 import { sessionConfig } from './config/session.js';
 import cookieParser from "cookie-parser"
 import path from 'path'
+import { errorHandler } from './utils/errorHandler.js';
 
 dotenv.config();
 
@@ -61,6 +61,32 @@ app.get('/public', (req, res) => {
   res.sendFile(path.join(path.resolve(), 'index.html'));
 });
 
+// Handle 404 errors
+app.use((req, res, next) => {
+  res.status(404).json({
+    status: 'error',
+    message: `Can't find ${req.originalUrl} on this server!`
+  });
+});
+
+// Global error handling middleware
+app.use(errorHandler);
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.log('UNHANDLED REJECTION! 💥 Shutting down...');
+  console.error(err);
+  server.close(() => {
+    process.exit(1);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.log('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  console.error(err);
+  process.exit(1);
+});
 
 server.listen(PORT, ()=>{
   console.log(`Example app listening on port ${PORT}`)

@@ -16,7 +16,7 @@ export const sessionConfig = session({
     secure: process.env.NODE_ENV === 'production',
     //secure:false, // make true for production  HTTPS-only in production
     httpOnly: true, 
-    sameSite: 'None', // Prevent CSRF
+    sameSite: 'strict', // Prevent CSRF
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 });

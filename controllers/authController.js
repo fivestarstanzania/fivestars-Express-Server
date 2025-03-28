@@ -52,6 +52,8 @@ export const login = async (req, res) => {
          id: admin._id, 
          name: admin.name, 
       };
+
+      console.log("successfully logged in:" )
       
       res.json({
         message: 'Login successful',
