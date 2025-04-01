@@ -4,7 +4,7 @@ import Product from "../models/ProductModel.js";
 import Notification from "../models/notificationModel.js";
 import axios from "axios";
 import {io,getReceiverSocketId } from "../socket/socket.js";
-import { Socket } from "socket.io";
+import { updateSellerPendingCount } from "../utils/countPendingOrders.js";
 
 
 export async function createOrder(req, res) {
@@ -72,6 +72,10 @@ export async function createOrder(req, res) {
     // Save the order to the database
     await newOrder.save();
     
+
+    if(newOrder.status==="Pending"){
+      await updateSellerPendingCount(newOrder.seller.id)
+    }
 
     // Send real-time notification to the seller
     const title = "New order"
@@ -210,30 +214,52 @@ export async function updateOrderStatus(req, res) {
   
   try {
     // Find the order by ID
-    const order = await Order.findById(orderId);
-    if (!order) {
+    const oldOrder = await Order.findById(orderId);
+    if (!oldOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
 
     
     // Update the status
-    order.status = status;
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { status },
+      { new: true, runValidators: true }
+    );
 
-    // Save the updated order
-    await order.save();
+    if (!updatedOrder) {
+      return res.status(404).json({ message: "Order not found after update" });
+    }
+
+
+    // Check if pending status changed
+    const wasPending = oldOrder.status === 'Pending';
+    const nowPending = status === 'Pending';
+
+    if (wasPending !== nowPending) {
+      await updateSellerPendingCount(updatedOrder.seller.id);
+    }
 
     //console.log("order:", order)
 
     // Notify the buyer about the status update
     const title = `Order ${status}`
-    const message = `Your Order number: ${order.orderNumber} has been ${status}.`;
+    const message = `Your Order number: ${updatedOrder.orderNumber} has been ${status}.`;
+
+    const buyerId = updatedOrder.buyer?.id?.toString();
+    const sellerId = updatedOrder.seller?.id?.toString();
+
+    if (!buyerId || !sellerId) {
+      return res.status(400).json({ message: "Buyer or Seller info missing in the order" });
+    }
+
     const newNotification = new Notification({
-      receiverId: order.buyer.id,
+      receiverId: buyerId,
       title,
       message,
       type: "Order",
       metadata: {
-        orderId: order._id,
+        orderId: updatedOrder._id,
         toward:"buyer"
       },
       
@@ -241,24 +267,28 @@ export async function updateOrderStatus(req, res) {
     await newNotification.save();
     
     //use socket
-    const buyerSocketId = getReceiverSocketId(order.buyer.id.toString());
-    const sellerSocketId = getReceiverSocketId(order.seller.id.toString());
+    const buyerSocketId = getReceiverSocketId(updatedOrder.buyer.id.toString());
+    const sellerSocketId = getReceiverSocketId(updatedOrder.seller.id.toString());
     
     if(sellerSocketId){
-      io.to( sellerSocketId).emit("orderStatusUpdate", order)
+      
+      io.to( sellerSocketId).emit("orderStatusUpdate", updatedOrder)
+      console.log("order status updated by socket to seller")
     }
     if (buyerSocketId) {
       // Send order update
-      io.to(buyerSocketId).emit("orderStatusUpdate", order);
+      io.to(buyerSocketId).emit("orderStatusUpdate", updatedOrder);
+      console.log("order statu supdated by socket to buyer")
+
       // Send notification
       io.to(buyerSocketId).emit("newNotification", newNotification);
     }
     
 
   
-    const user = await User.findById(order.buyer.id.toString());
+    const user = await User.findById(buyerId);
     
-    const expoPushToken = user.expoPushToken;
+    const expoPushToken = user?.expoPushToken;
 
     
     if (expoPushToken) {
@@ -270,7 +300,7 @@ export async function updateOrderStatus(req, res) {
           priority: 'high',
           sound: "default", 
           channelId: 'default',
-          data:order,
+          data:updatedOrder,
         });
         //console.log('Notification sent on update order status:', response.data);
       } catch (error) {
@@ -279,7 +309,7 @@ export async function updateOrderStatus(req, res) {
     }
 
 
-    res.status(200).json(order);
+    res.status(200).json({order:updatedOrder});
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });

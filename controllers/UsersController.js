@@ -52,7 +52,6 @@ export const registerUsers =  async (req,res)=>{
 }
 
 export const checkAuth = async (req,res)=>{
-  console.log(req.user)
   try {
     res.status(200).json(req.user);
   } catch (error) {
