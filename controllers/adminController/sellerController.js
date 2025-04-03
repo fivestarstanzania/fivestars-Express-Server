@@ -24,7 +24,7 @@ export const createSeller = async (req, res) => {
       return res.status(400).json({ error: "Please fill in all required fields." });
       
     }
-    console.log("check 1")
+    //console.log("check 1")
 
      // Find user by email in the User collection
      const user = await User.findOne({ email });
@@ -34,7 +34,7 @@ export const createSeller = async (req, res) => {
      }
 
      const userId = user._id;
-     console.log("check 2")
+     //console.log("check 2")
     // Check if seller already exists
     const existingSeller = await Seller.findOne({ email });
     if (existingSeller) {
@@ -43,13 +43,17 @@ export const createSeller = async (req, res) => {
     }
 
 
-    
-    user.role = "seller";
+    // Don't change user role yet - wait for agreement
+    user.role = "pending-seller";
     await user.save(); 
 
-    console.log("check 3")
+    //console.log("check 3")
     
-    const businessAddress = JSON.parse(req.body.businessAddress);
+    //const businessAddress = JSON.parse(req.body.businessAddress);
+    const businessAddress = 
+  typeof req.body.businessAddress === "string"
+    ? JSON.parse(req.body.businessAddress)
+    : req.body.businessAddress;
     const newSeller = new Seller({
       userId,
       name,
@@ -59,13 +63,15 @@ export const createSeller = async (req, res) => {
       businessName,
       businessAddress,
       profileImage: req.file ? req.file.path : null,
+      activityStatus: "PendingAgreement",
+      hasAgreedToTerms: false
     });
 
-    console.log("check 4")
+    //console.log("check 4")
 
     const savedSeller = await newSeller.save();
-    console.log("check 5")
-    res.status(201).json({ message: "Seller created successfully", data: savedSeller });
+    //console.log("check 5")
+    res.status(201).json({ message: "Seller created successfully. Please agree to the terms to activate your seller account.", data: savedSeller });
   } catch (error) {
     res.status(500).json({ message: "Error creating seller", error: error.message });
     console.log(error)

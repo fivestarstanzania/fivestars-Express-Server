@@ -9,8 +9,15 @@ const UserSchema = new mongoose.Schema({
         unique: true
     },
     name: String,
-    expoPushToken: {type:String,default: null},
-    role: { type: String, default: 'customer' },
+    expoPushToken: {
+      type:String,
+      default: null
+    },
+    role: { 
+      type: String, 
+      enum: ['customer', 'banned-seller', 'pending-seller', 'seller'],
+      default: 'customer' 
+    },
     createdAt: {
     type: Date,
     default: Date.now

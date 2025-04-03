@@ -42,9 +42,14 @@ const SellerSchema = new mongoose.Schema({
     region: { type: String, required: true },
   },
 
-  activityStatus: {
+  activityStatus: { 
     type: String, 
-    default: "Active",
+    enum: ['PendingAgreement', 'Active', 'Inactive', 'Banned'],
+    default: "PendingAgreement",
+  },
+  hasAgreedToTerms: {
+    type: Boolean,
+    default: false
   },
   uploadLimit: { 
     type: Number, 

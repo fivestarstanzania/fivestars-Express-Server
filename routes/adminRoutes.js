@@ -36,10 +36,10 @@ router.get("/notifications",requireAdminAuth, getAllNotificationsForAdmin);
 
 router.get('/feedbacks',requireAdminAuth, getAllFeedback);
 
-router.post("/sellers/create",upload.single('profileImage'), createSeller);
+router.post("/sellers/create",upload.single('profileImage') ,requireAdminAuth, createSeller);
 router.get("/sellers/get/:id",requireAdminAuth, getSellerById);
 router.get('/sellers/all',requireAdminAuth, getAllSellers)
-router.delete("/sellers/delete/:sellerId", deleteSellerById);
+router.delete("/sellers/delete/:sellerId",requireAdminAuth, deleteSellerById);
 router.put('/sellers/update/:id', validateUploadLimit, requireAdminAuth, updateUploadLimit )
 router.put('/sellers/ban/:sellerId', requireAdminAuth, banSeller)
 
