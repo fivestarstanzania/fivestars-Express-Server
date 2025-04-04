@@ -24,6 +24,7 @@ const PORT=process.env.PORT;
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_PROD,
+  process.env.REACT_URL, 
   "https://fivestarstanzania.netlify.app"
 ];
 
