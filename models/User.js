@@ -13,6 +13,14 @@ const UserSchema = new mongoose.Schema({
       type:String,
       default: null
     },
+    sellerApplication: {
+      status: {
+          type: String,
+          enum: ['not-applied', 'pending', 'approved', 'rejected'],
+          default: 'not-applied'
+      },
+      rejectionReason: String
+    },
     role: { 
       type: String, 
       enum: ['customer', 'banned-seller', 'pending-seller', 'seller'],

@@ -214,3 +214,55 @@ export const banSeller = async (req, res) => {
     });
   }
 };
+
+
+export const getAllApplications = async (req, res) => {
+  try {
+      const applications = await SellerApplication.find({ status: 'pending' })
+          .populate('userId', 'name email');
+          
+      res.json(applications);
+  } catch (error) {
+      res.status(500).json({ message: error.message });
+  }
+};
+
+export const reviewApplication = async (req, res) => {
+  try {
+      const { id } = req.params;
+      const { status, rejectionReason } = req.body;
+      const { id: adminId } = req.session.user;
+      
+      const application = await SellerApplication.findByIdAndUpdate(
+          id,
+          {
+              status,
+              rejectionReason,
+              reviewedAt: new Date(),
+              reviewedBy: adminId
+          },
+          { new: true }
+      );
+      
+      if (!application) {
+          return res.status(404).json({ message: 'Application not found' });
+      }
+      
+      // Update user's role if approved
+      if (status === 'approved') {
+          await User.findByIdAndUpdate(application.userId, {
+              role: 'pending-seller',
+              'sellerApplication.status': 'approved'
+          });
+      } else if (status === 'rejected') {
+          await User.findByIdAndUpdate(application.userId, {
+              'sellerApplication.status': 'rejected',
+              'sellerApplication.rejectionReason': rejectionReason
+          });
+      }
+      
+      res.json(application);
+  } catch (error) {
+      res.status(500).json({ message: error.message });
+  }
+};

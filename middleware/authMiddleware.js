@@ -2,7 +2,6 @@ import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
 import { RedisStore } from "connect-redis";
 import { redisClient } from '../config/redis.js';
-import session from 'express-session';
 import User from '../models/User.js';
 import { AppError } from '../utils/errorHandler.js';
 

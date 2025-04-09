@@ -1,11 +1,12 @@
 import Seller from "../models/sellerModel.js";
 import User from "../models/User.js";
 import Review from '../models/ReviewsModel.js'
+import SellerApplication from "../models/SellerApplication.js"
+import  {cloudinary}  from '../utils/cloudinary.js';
 
 export const getSellerById = async (req, res) => {
   try { 
     const { userId } = req.params; // user ID
-    console.log("userId:", userId)
 
     // Check if the user exists in the User collection
     const userExists = await User.findById(userId);
@@ -60,5 +61,85 @@ export const agreeToTerms = async (req, res) => {
     res.status(200).json({ message: "Terms agreement confirmed. Seller account activated." });
   } catch (error) {
     res.status(500).json({ message: "Error updating agreement", error: error.message });
+  }
+};
+
+// Submit application
+export const submitApplication = async (req, res) => {
+  try {
+      const { _id, email, name } = req.user;
+      const userId = _id;
+      const {
+        phone,
+        description,
+        businessName,
+        businessAddress,
+        profileImage
+      } = req.body;
+      console.log("image", profileImage)
+      if (!businessName || !name || !description || !phone || !email || !businessAddress || !profileImage ) {
+        console.log("Please fill in all required fields.");
+        return res.status(400).json({ error: "Please fill in all required fields." });
+        
+      }
+
+      // Check if user already has a pending application
+      const existingApplication = await SellerApplication.findOne({ 
+          userId, 
+          status: 'pending' 
+      });
+      console.log("debug 1")
+      if (existingApplication) {
+          return res.status(400).json({ 
+              message: 'You already have a pending application' 
+          });
+      }
+      console.log("debug 2")
+
+      const result = await cloudinary.uploader.upload(profileImage, {
+        folder:'SellerApplications',
+        quality: 'auto',
+        fetch_format: 'auto',
+        width: 800, // Max width for mobile
+        crop: 'limit',
+        format: 'webp' // Modern format
+      });
+      // Create new application
+      const application = new SellerApplication({
+          userId,
+          email,
+          name,
+          phone,
+          description,
+          businessAddress,
+          businessName,
+          profileImage: result.secure_url,
+      });
+      console.log("debug 3")
+      await application.save();
+      
+      // Update user's sellerApplication status
+      await User.findByIdAndUpdate(userId, {
+          'sellerApplication.status': 'pending'
+      });
+      console.log("debug 4")
+      res.status(201).json(application);
+  } catch (error) {
+      res.status(500).json({ message: error.message });
+  }
+};
+
+// Get user's application status
+export const getMyApplication = async (req, res) => {
+  try {
+      const { userId } = req.user;
+      
+      const application = await SellerApplication.findOne({ userId })
+          .sort({ submittedAt: -1 })
+          .limit(1);
+          
+      res.json(application || { status: 'not-applied' });
+  } catch (error) {
+      res.status(500).json({ message: error.message });
   }
 };
