@@ -65,6 +65,12 @@ app.use('/api/reviews', authMiddleware,reviewsRoutes)
 app.get('/public', (req, res) => {
   res.sendFile(path.join(path.resolve(), 'index.html'));
 });
+app.get('/privacy-policy', (req, res) => {
+  res.sendFile(path.join(path.resolve(), 'privacy-policy.html'));
+});
+app.get('/delete', (req, res) => {
+  res.sendFile(path.join(path.resolve(), 'delete.html'));
+});
 
 // Handle 404 errors
 app.use((req, res, next) => {

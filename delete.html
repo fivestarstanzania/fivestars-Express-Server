@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delete My Data</title>
+  <style>
+    .confirmation {
+      display: none;
+      background-color: #dff0d8;
+      color: #3c763d;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      border: 1px solid #d6e9c6;
+    }
+    .form-container {
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Request Data Deletion</h1>
+  <p>If you want us to delete your account and associated email, please enter your email address below:</p>
+
+  <div class="form-container">
+    <form id="deletionForm" action="mailto:rebutanzania@gmail.com?subject=Data Deletion Request" method="POST" enctype="text/plain">
+      <label for="email">Email Address:</label><br>
+      <input type="email" id="email" name="Email" required><br><br>
+      <input type="submit" value="Request Deletion">
+    </form>
+  </div>
+
+  <div id="confirmation" class="confirmation">
+    Your data deletion request has been sent successfully. We'll process your request and confirm deletion via email.
+  </div>
+
+  <p>We'll process your request and confirm deletion via email.</p>
+
+  <script>
+    document.getElementById('deletionForm').addEventListener('submit', function(e) {
+      // Store the form action (needed for mailto: to work)
+      const formAction = this.action;
+      
+      // Show confirmation message
+      document.getElementById('confirmation').style.display = 'block';
+      
+      // Hide the form after submission
+      document.querySelector('.form-container').style.display = 'none';
+      
+      // Reset the form (optional)
+      setTimeout(() => this.reset(), 0);
+      
+      // Allow the default form submission to proceed
+      return true;
+    });
+  </script>
+</body>
+</html>
