@@ -5,6 +5,7 @@ import Notification from "../models/notificationModel.js";
 import axios from "axios";
 import {io,getReceiverSocketId } from "../socket/socket.js";
 import { updateSellerPendingCount } from "../utils/countPendingOrders.js";
+import Seller from "../models/sellerModel.js";
 
 
 export async function createOrder(req, res) {
@@ -29,6 +30,8 @@ export async function createOrder(req, res) {
     }
     //console.log("check2")
     const sellerDetails = await User.findById(sellerUserId);
+    const sellerInfos = await Seller.findOne({userId:sellerUserId})
+    
     if (!sellerDetails) {
       return res.status(404).json({ message: "Seller not found" });
     }
@@ -59,6 +62,7 @@ export async function createOrder(req, res) {
       seller:{
         id: sellerDetails._id, 
         name: sellerDetails.name, 
+        phone: sellerInfos.phone,
       },
       status,
       product: {

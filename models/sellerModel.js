@@ -53,7 +53,7 @@ const SellerSchema = new mongoose.Schema({
   },
   uploadLimit: { 
     type: Number, 
-    default: 10 
+    default: 30 
   },
 },
 {

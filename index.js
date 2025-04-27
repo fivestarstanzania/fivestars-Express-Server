@@ -25,7 +25,8 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_PROD,
   process.env.REACT_URL, 
-  "https://fivestarstanzania.netlify.app"
+  "https://fivestarstanzania.netlify.app",
+
 ];
 
 //Middlewares
@@ -36,13 +37,23 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log('Blocked origin:', origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true, 
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  exposedHeaders: ['set-cookie']
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept"
+  ],
+  exposedHeaders: ["set-cookie", "Content-Disposition"],
+  maxAge: 86400
+  
 }));
+app.options('*', cors());
 
 app.set('trust proxy', 1); // Required for secure cookies on Render
 app.use(sessionConfig)
@@ -85,7 +96,7 @@ app.use(errorHandler);
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  console.log('UNHANDLED REJECTION! 💥 Shutting down...');
+  console.log('UNHANDLED REJECTION!  Shutting down...');
   console.error(err);
   server.close(() => {
     process.exit(1);
@@ -94,7 +105,7 @@ process.on('unhandledRejection', (err) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.log('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  console.log('UNCAUGHT EXCEPTION!  Shutting down...');
   console.error(err);
   process.exit(1);
 });

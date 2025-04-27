@@ -3,9 +3,18 @@ import { Schema, model } from 'mongoose';
 const ProductSchema = new Schema(
   {
     imageUrl: { type: String, required: true }, 
+    imageUrls:{type:[String],
+      required:true,
+    },
     description: { type: String, required: true },
     title: { type: String, required: true },
-    price: { type: String, required: true },
+    price: { type: Number, required: true },
+    discountedPrice: {
+      type: Number
+    },
+    discountPercentage: {
+      type: Number
+    },
     userId: { 
       type: Schema.Types.ObjectId, 
       ref: 'User', // Reference to the User model
@@ -16,18 +25,53 @@ const ProductSchema = new Schema(
       ref: 'Seller', // Reference to the User model
       required: true 
     },
+    category: {
+      type: String,
+      required: true,
+      enum: [
+        "home_items",
+        "electronics",
+        "food",
+        "clothes",
+        "shoes",
+        "personal_care",
+        "fashion_accessories",
+        "stationery",
+        "health_wellbeing",
+        "furniture"
+      ]
+    },
+    subcategory: { type: String },
+    // Field to indicate whether the product is verified by an admin
+    verified: {
+      type: Boolean,
+      default: false
+    },
     sellerStatus: {
       type: String,
       default: "Active", 
       required: true
     },
-    category:{type: String, required: true}
+    returnPolicy: {
+      type: String,
+      required: true
+    },
+    quantity: { type: Number },
+    deliveryOption: { type: String, enum: ["Free", "Paid"] },
+    // Use a flexible field to store any extra, category-specific attributes.
+    // For example, "specifications" may include fields like brand, model, size, warranty, ingredients, etc.
+    specifications: {
+      type: Schema.Types.Mixed,
+      default: {}
+    }
   },
   { timestamps: true }
 );
 
 ProductSchema.index({description: 'text' });
 ProductSchema.index({title: 'text' });
+ProductSchema.index({subcategory: 'text' });
+ProductSchema.index({specifications: 'text' });
 ProductSchema.index({ category: 1 });
 ProductSchema.index({ userId: 1 });
 ProductSchema.index({ createdAt: -1 });

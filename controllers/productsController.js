@@ -6,19 +6,36 @@ import Seller from '../models/sellerModel.js'
 import  {cloudinary}  from '../utils/cloudinary.js';
 import { isSellerBanned } from '../utils/isSellerBanned.js';
 export async function createProduct(req, res) { 
+    const files = req.files || [req.file].filter(Boolean); // Handle both formats
     try {
         const userId = req.user._id;
-        const { description, price, image, category, title } = req.body;
+        const { 
+            description, 
+            price,  
+            category, 
+            title,
+            subcategory, 
+            quantity,
+            deliveryOption,
+            specifications,
+            returnPolicy
+        } = req.body;
+
+        const files = req.files || [req.file].filter(Boolean);
+        if (!files || files.length === 0) {
+            return res.status(400).json({ message: "No image file uploaded." });
+        }
+        if (files.length > 4) {
+            return res.status(400).json({ message: "Maximum 4 images allowed per product." });
+        }
         const seller = await Seller.findOne({userId});
         if (!seller) {
             return res.status(404).json({ message: "Seller not found." });
         }
         const sellerId = seller._id;
-
         if(await isSellerBanned(sellerId)){
             return res.status(403).json({ message: "You are banned from adding products." });
         }
-
         const productCount = await Product.countDocuments({sellerId});
         //const maxProductAllowed = 10;
         
@@ -27,39 +44,104 @@ export async function createProduct(req, res) {
         if (productCount >= maxSellerProductAllowed){
             return res.status(403).json({message:`Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`})
         }
-
-        // Ensure an image is uploaded
-        if (!image) {
-            return res.status(400).json({ message: "No image file uploaded." });
-        }
-
-        // Upload image to Cloudinary
-        //const imageFile = req.file.path; // This is the uploaded image file from the FormData
-        const result = await cloudinary.uploader.upload(image, {
-            folder:'products',
-            quality: 'auto',
-            fetch_format: 'auto',
-            width: 800, // Max width for mobile
-            crop: 'limit',
-            format: 'webp' // Modern format
+        
+        // Upload all images to Cloudinary
+        const uploadPromises = files.map(file => {
+            const b64 = Buffer.from(file.buffer).toString("base64");
+            const dataURI = `data:${file.mimetype};base64,${b64}`;
+            return cloudinary.uploader.upload(dataURI, {
+                folder:'products',
+                quality: 'auto',
+                fetch_format: 'auto',
+                width: 800,
+                crop: 'limit',
+                format: 'webp'
+            });
         });
+        const results = await Promise.all(uploadPromises);
+        const imageUrls = results.map(result => result.secure_url);
+        const imageUrl = imageUrls[0];
 
+        console.log("i got called3")
         const newProduct = new Product({
             userId,
             description,
-            price,
+            price: Number(price),
             title,
-            imageUrl: result.secure_url, // Save Cloudinary image URL in MongoDB
+            imageUrl, 
+            imageUrls,
             category,
+            subcategory,
             sellerId,
+            quantity: Number(quantity),
+            deliveryOption,
+            returnPolicy,
+            specifications: JSON.parse(specifications)
         });
-
+        console.log("i got called4")
         await newProduct.save();
         //console.log('the product created success')
+        console.log("i got called5")
         res.status(200).json({ message: 'Product created successfully', newProduct });
     } catch (error) {
         console.error("Error creating product: ", error, req.body);
         res.status(500).json({ message: "Failed to create the product", error: error.message });
+    }
+}
+
+export async function updateProduct(req, res) {
+    try {
+        const userId = req.user._id;
+        const productId = req.params.productId;
+        
+        // Only extract allowed fields from request body
+        const { 
+            title, 
+            price, 
+            description, 
+            quantity 
+        } = req.body;
+
+        // 1. Verify product exists and belongs to seller
+        const product = await Product.findOne({ _id: productId, userId });
+        if (!product) {
+            return res.status(404).json({ message: "Product not found or unauthorized." });
+        }
+
+        // 2. Prepare update object with only allowed fields
+        const updates = {};
+        
+        if (title !== undefined) updates.title = title;
+        if (price !== undefined) updates.price = Number(price);
+        if (description !== undefined) updates.description = description;
+        if (quantity !== undefined) updates.quantity = Number(quantity);
+        
+        // Add update timestamp
+        updates.updatedAt = new Date();
+
+        // 3. Update only if there are valid changes
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: "No valid fields provided for update." });
+        }
+
+        // 4. Perform the update
+        const updatedProduct = await Product.findByIdAndUpdate(
+            productId,
+            { $set: updates },
+            { new: true } // Return the updated document
+        );
+
+        res.status(200).json({ 
+            message: 'Product updated successfully', 
+            product: updatedProduct 
+        });
+
+    } catch (error) {
+        console.error("Error updating product: ", error);
+        res.status(500).json({ 
+            message: "Failed to update the product", 
+            error: error.message 
+        });
     }
 }
 
@@ -112,8 +194,8 @@ export async function getProduct(req, res) {
         }
 
         // 3. Get additional seller info
-        const seller = await User.findById(product.userId)
-            .select("name") // Only get the name field
+        const seller = await Seller.findById(product.sellerId)
+            .select("businessName") // Only get the name field
             .lean();
 
         if (!seller) {
@@ -125,7 +207,7 @@ export async function getProduct(req, res) {
         // Construct the final response
         const responseData = {
             product,
-            sellerName: seller.name
+            sellerName: seller.businessName
         };
 
         console.log(product)

@@ -5,6 +5,7 @@ import Seller from "../models/sellerModel.js";
 
 // Create a new review
 export const createReview = async (req, res) => {
+
   try {
     const { reviewType, productId, sellerUserId, userId, rating, reviewText } =
       req.body;
@@ -25,7 +26,7 @@ export const createReview = async (req, res) => {
         .status(400)
         .json({ message: "sellerId is required for seller reviews" });
     }
-
+ 
     // Check if userId exists in the Users collection
     const userExists = await User.findById(userId);
     if (!userExists) {
@@ -54,7 +55,7 @@ export const createReview = async (req, res) => {
       }
     }
 
-    const seller = await Seller.findOne({sellerId:sellerUserId})
+    const seller = await Seller.findOne({userId:sellerUserId})
 
     if (!seller) {
       return res.status(404).json({ message: "Seller not found" });
@@ -69,7 +70,6 @@ export const createReview = async (req, res) => {
       rating,
       reviewText,
     });
-
     await review.save();
     res.status(201).json({ message: "Review created successfully", review });
   } catch (error) {
