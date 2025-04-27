@@ -20,7 +20,7 @@ export const createSeller = async (req, res) => {
 
     // Check if required fields are provided
     if (!businessName || !name || !description || !phone || !email  ) {
-      console.log("Please fill in all required fields.");
+      //console.log("Please fill in all required fields.");
       return res.status(400).json({ error: "Please fill in all required fields." });
       
     }
@@ -29,7 +29,7 @@ export const createSeller = async (req, res) => {
      // Find user by email in the User collection
      const user = await User.findOne({ email });
      if (!user) {
-      console.log("User not found in the database.")
+      //console.log("User not found in the database.")
        return res.status(404).json({ message: "User not found in the database." });
      }
 
@@ -38,7 +38,7 @@ export const createSeller = async (req, res) => {
     // Check if seller already exists
     const existingSeller = await Seller.findOne({ email });
     if (existingSeller) {
-      console.log("Seller with this email already exists.")
+      //console.log("Seller with this email already exists.")
       return res.status(400).json({ message: "Seller with this email already exists." });
     }
 
@@ -74,7 +74,7 @@ export const createSeller = async (req, res) => {
     res.status(201).json({ message: "Seller created successfully. Please agree to the terms to activate your seller account.", data: savedSeller });
   } catch (error) {
     res.status(500).json({ message: "Error creating seller", error: error.message });
-    console.log(error)
+    //console.log(error)
   }
 };
 
@@ -119,7 +119,7 @@ export const deleteSellerById = async (req, res) => {
     if(!sellerId){
       return res.status(400).json({ error: "Seller Id is required." });
     }
-    console.log(sellerId)
+    //console.log(sellerId)
 
     // 1. Find the seller first to get their userId
     const seller = await Seller.findById(sellerId);

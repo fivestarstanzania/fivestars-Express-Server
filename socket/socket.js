@@ -38,7 +38,7 @@ io.on("connection", (socket) => {
 
     // Handle disconnection
     socket.on("disconnect", () => {
-      console.log("A user disconnected:", socket.id);
+      //console.log("A user disconnected:", socket.id);
       for (const [userId, socketId] of Object.entries(userSocketMap)) {
         if (socketId === socket.id) {
           delete userSocketMap[userId];

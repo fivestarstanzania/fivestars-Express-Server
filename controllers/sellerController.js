@@ -43,7 +43,7 @@ export const agreeToTerms = async (req, res) => {
 
     //console.log("user to agreement  is found")
     if (seller.hasAgreedToTerms) {
-      console.log("all correct for new seller")
+      //console.log("all correct for new seller")
       return res.status(200).json({ message: "Terms already agreed" });
     }
 
@@ -76,9 +76,9 @@ export const submitApplication = async (req, res) => {
         businessAddress,
         profileImage
       } = req.body;
-      console.log("image", profileImage)
+      //console.log("image", profileImage)
       if (!businessName || !name || !description || !phone || !email || !businessAddress || !profileImage ) {
-        console.log("Please fill in all required fields.");
+        //console.log("Please fill in all required fields.");
         return res.status(400).json({ error: "Please fill in all required fields." });
         
       }
@@ -88,13 +88,13 @@ export const submitApplication = async (req, res) => {
           userId, 
           status: 'pending' 
       });
-      console.log("debug 1")
+      //console.log("debug 1")
       if (existingApplication) {
           return res.status(400).json({ 
               message: 'You already have a pending application' 
           });
       }
-      console.log("debug 2")
+      //console.log("debug 2")
 
       const result = await cloudinary.uploader.upload(profileImage, {
         folder:'SellerApplications',
@@ -115,14 +115,14 @@ export const submitApplication = async (req, res) => {
           businessName,
           profileImage: result.secure_url,
       });
-      console.log("debug 3")
+      //console.log("debug 3")
       await application.save();
       
       // Update user's sellerApplication status
       await User.findByIdAndUpdate(userId, {
           'sellerApplication.status': 'pending'
       });
-      console.log("debug 4")
+      //console.log("debug 4")
       res.status(201).json(application);
   } catch (error) {
       res.status(500).json({ message: error.message });

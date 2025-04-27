@@ -62,7 +62,7 @@ export async function createProduct(req, res) {
         const imageUrls = results.map(result => result.secure_url);
         const imageUrl = imageUrls[0];
 
-        console.log("i got called3")
+        //console.log("i got called3")
         const newProduct = new Product({
             userId,
             description,
@@ -78,10 +78,10 @@ export async function createProduct(req, res) {
             returnPolicy,
             specifications: JSON.parse(specifications)
         });
-        console.log("i got called4")
+        //console.log("i got called4")
         await newProduct.save();
         //console.log('the product created success')
-        console.log("i got called5")
+        //console.log("i got called5")
         res.status(200).json({ message: 'Product created successfully', newProduct });
     } catch (error) {
         console.error("Error creating product: ", error, req.body);
@@ -210,7 +210,7 @@ export async function getProduct(req, res) {
             sellerName: seller.businessName
         };
 
-        console.log(product)
+        //console.log(product)
         // Send the response
         res.status(200).json(responseData);
 
@@ -223,7 +223,7 @@ export async function getProduct(req, res) {
 export async function searchProduct(req, res) {
     try {
         const searchTerm = req.params.key.trim(); // Trim whitespace from search term
-        console.log("search term:", searchTerm)
+        //console.log("search term:", searchTerm)
         if (!searchTerm || searchTerm.length < 2) {
             return res.status(400).json({ 
                 message: "Search term must be at least 2 characters long" 
@@ -375,13 +375,13 @@ export async function deleteProduct(req, res){
 export async function getSellerProducts(req, res) {
     try {
         const { userId } = req.query;
-        console.log("userId:",userId) 
+        //console.log("userId:",userId) 
         if (!userId) {
             return res.status(400).json({ error: 'Seller user ID is required' });
         }
         
         const seller = await  Seller.findOne({userId}).select('activityStatus');
-        console.log("text1") 
+        //console.log("text1") 
         if(!seller){
             return res.status(404).json({ message: "Seller with that userId not found" });
         }
@@ -389,15 +389,15 @@ export async function getSellerProducts(req, res) {
         if (seller?.activityStatus === "Banned") {
             return res.status(403).json({ error: 'This seller account is banned' });
         }
-        console.log("text2")
+        //console.log("text2")
         const sellerId = seller._id;
 
         const products = await Product.find({ sellerId })
         .sort({ createdAt: -1 })
         .lean();
-        console.log("text3")
+        //console.log("text3")
         res.status(200).json(products);
-        console.log(products)
+        //console.log(products)
     } catch (error) {
             console.error('Seller products error:', error);
             res.status(500).json({ 

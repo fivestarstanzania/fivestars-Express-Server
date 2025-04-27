@@ -15,17 +15,17 @@ export async function createOrder(req, res) {
     const { buyer, sellerUserId, status, productId } = req.body;
 
     if (!buyer || !buyer.name || !buyer.contact || !buyer.address) {
-      console.log("Buyer details are incomplete")
+      //console.log("Buyer details are incomplete")
       return res.status(400).json({ message: "Buyer details are incomplete" });
     }
 
     if (!sellerUserId) {
-      console.log("Seller ID is required")
+      //console.log("Seller ID is required")
       return res.status(400).json({ message: "Seller ID is required" });
     }
 
     if (!productId) {
-      console.log("Product ID is required")
+      //console.log("Product ID is required")
       return res.status(400).json({ message: "Product ID is required" });
     }
     //console.log("check2")
@@ -277,12 +277,12 @@ export async function updateOrderStatus(req, res) {
     if(sellerSocketId){
       
       io.to( sellerSocketId).emit("orderStatusUpdate", updatedOrder)
-      console.log("order status updated by socket to seller")
+      //console.log("order status updated by socket to seller")
     }
     if (buyerSocketId) {
       // Send order update
       io.to(buyerSocketId).emit("orderStatusUpdate", updatedOrder);
-      console.log("order statu supdated by socket to buyer")
+      //console.log("order statu supdated by socket to buyer")
 
       // Send notification
       io.to(buyerSocketId).emit("newNotification", newNotification);

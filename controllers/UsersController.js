@@ -12,7 +12,7 @@ const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(CLIENT_ID);
 
 export const registerUsers =  async (req,res)=>{
-    console.log("i got called")
+    //console.log("i got called")
     try {
         
         const {token} = req.body;
@@ -55,13 +55,13 @@ export const checkAuth = async (req,res)=>{
   try {
     res.status(200).json(req.user);
   } catch (error) {
-    console.log("Error in checkAuth controller", error.message)
+    //console.log("Error in checkAuth controller", error.message)
     res.status(500).json({message:"Internal server error"});
   }
 }
 
 export const logout = async (req,res) => {
-  console.log('log out functions')
+  //console.log('log out functions')
   const refreshToken = req.body.refreshToken;
   
   if (!refreshToken) {
@@ -78,11 +78,11 @@ export const logout = async (req,res) => {
 
 // Refresh token controller to generate a new access token
 export const  refreshToken= async(req, res)=> {
-  console.log("refresh Token controller called")
+  //console.log("refresh Token controller called")
     const { refreshToken } = req.body;
   
     if (!refreshToken) {
-      console.log('Refresh token is required')
+      //console.log('Refresh token is required')
       return res.status(401).json({ message: 'Refresh token is required' });
     }
   
@@ -90,7 +90,7 @@ export const  refreshToken= async(req, res)=> {
       // Verify the refresh token
       const decoded = verify(refreshToken, process.env.JWT_REFRESH_SECRET);
       if(decoded){
-        console.log("i got called for refresh access token")
+        //console.log("i got called for refresh access token")
       }
      
       // Generate a new access token
@@ -103,7 +103,7 @@ export const  refreshToken= async(req, res)=> {
       res.json({ accessToken });
     } catch (error) {
       if (error instanceof TokenExpiredError) {
-        console.log("expired refresh token ")
+        //console.log("expired refresh token ")
         return res.status(403).json({ message: 'Refresh token expired. Please log in again.' });
       }
       res.status(500).json({ message: 'Error refreshing access token' });
@@ -112,7 +112,7 @@ export const  refreshToken= async(req, res)=> {
 
 
 export const  updateExpoToken = async(req,res) =>{
-  console.log("i got called to update expo push token");
+  //console.log("i got called to update expo push token");
   try {
     const {expoPushToken} = req.body;
     if(!expoPushToken){
