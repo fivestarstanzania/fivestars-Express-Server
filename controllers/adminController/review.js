@@ -46,10 +46,10 @@ export const getAllReviews = async (req, res) => {
 }
 
 export const deleteReview = async (req, res) => {
-    console.log('i got called to delete review')
+    //console.log('i got called to delete review')
     try {
         const { reviewId } = req.params;
-        console.log('i got called to delete review', reviewId)
+        //console.log('i got called to delete review', reviewId)
         // Find and delete the review
         const deletedReview = await Review.findByIdAndDelete(reviewId);
 
