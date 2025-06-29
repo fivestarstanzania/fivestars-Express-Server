@@ -9,7 +9,7 @@ const orderSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["Pending", "Received", "Confirmed", "Delivered"],
+      enum: ["Pending", "Received", "Confirmed", "Delivered", "Cancelled"],
       default: "Pending",
     },
     buyer: {

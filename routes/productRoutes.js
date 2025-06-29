@@ -1,6 +1,6 @@
 import express from 'express';
 import upload from "../middleware/multer.js";
-import {getCategoryProduct, getAllProducts, getProduct, searchProduct, createProduct, editProduct, deleteProduct, getSellerProducts, getUserProductCount, updateProduct } from '../controllers/productsController.js';
+import {getCategoryProduct, getAllProducts, getProduct, searchProduct, createProduct, editProduct, deleteProduct, getSellerProducts, getUserProductCount, updateProduct, createLogClickedProducts } from '../controllers/productsController.js';
 const router = express.Router();
 
 router.get('/category', getCategoryProduct); 
@@ -14,6 +14,6 @@ router.put('/edit', editProduct);
 router.patch('/update/:productId', updateProduct);
 router.delete('/delete/:productId', deleteProduct);
 router.post('/upload', upload.array('images', 4), createProduct);
-
+router.post('/log-click', createLogClickedProducts);
 export default router;
  

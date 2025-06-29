@@ -52,6 +52,10 @@ const ProductSchema = new Schema(
       default: "Active", 
       required: true
     },
+    clickCount: {
+      type: Number,
+      default: 0
+    },
     returnPolicy: {
       type: String,
       required: true

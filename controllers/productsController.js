@@ -1,8 +1,9 @@
 //Handles products CRUD operations
 import Product from '../models/ProductModel.js';
 import User from '../models/User.js';
-import Seller from '../models/sellerModel.js'
- 
+import Seller from '../models/sellerModel.js';
+import SearchLog from '../models/SearchLog.js';
+import ProductClickLog from '../models/ProductClickLog.js';
 import  {cloudinary}  from '../utils/cloudinary.js';
 import { isSellerBanned } from '../utils/isSellerBanned.js';
 export async function createProduct(req, res) { 
@@ -244,14 +245,25 @@ export async function searchProduct(req, res) {
         })
         .lean(); // Convert to plain JS object
 
-        if (products.length === 0) {
+       
+        // Remove products with no seller (e.g., seller was banned and not populated)
+        const validProducts = products.filter((p) => p.sellerId);
+
+         // ✅ Log the search
+        await SearchLog.create({
+            keyword: searchTerm,
+            resultsFound: validProducts.length,
+            userId: req.user?._id || null, // Capture if user is logged in
+        });
+        
+        if (validProducts.length === 0) {
             return res.status(404).json({ 
                 message: "No products found matching your search",
                 suggestions: ["Try different keywords", "Check your spelling"]
             });
         }
 
-        res.json(products);
+        res.json(validProducts);
 
     } catch (error) {
         console.error("Search error:", error);
@@ -446,4 +458,27 @@ export async function getUserProductCount(req, res) {
     }
 }
 
+export async function createLogClickedProducts(req, res) {
+    try {
+    const { productId, productTitle, userId, source } = req.body;
 
+    if (!productId || !productTitle) {
+      return res.status(400).json({ message: "Missing product info" });
+    }
+
+    await ProductClickLog.create({
+      productId,
+      productTitle,
+      userId: userId || null,
+      source: source || "other",
+    });
+
+    // Optional: increase product click count
+    await Product.findByIdAndUpdate(productId, { $inc: { clickCount: 1 } });
+
+    res.status(201).json({ message: "Click logged successfully" });
+  } catch (error) {
+    console.error("Error logging product click:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}

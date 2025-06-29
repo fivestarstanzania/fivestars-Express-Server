@@ -52,7 +52,7 @@ export const registerGoogleUsers =  async (req,res)=>{
         }
         const accessToken = jwt.sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '15m' });
         
-        const refreshToken = jwt.sign({userId: user._id}, process.env.JWT_REFRESH_SECRET,{expiresIn:'7d'});
+        const refreshToken = jwt.sign({userId: user._id}, process.env.JWT_REFRESH_SECRET,{expiresIn:'30d'});
     
         res.json({ accessToken,refreshToken, message: 'Login successful', email: user.email, name: user.name, _id:user._id});
     } catch (error) {
@@ -98,7 +98,7 @@ export const registerAppleUsers =  async (req,res)=>{
 
       const accessToken = jwt.sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '15m' });
       
-      const refreshToken = jwt.sign({userId: user._id}, process.env.JWT_REFRESH_SECRET,{expiresIn:'7d'});
+      const refreshToken = jwt.sign({userId: user._id}, process.env.JWT_REFRESH_SECRET,{expiresIn:'30d'});
   
       res.json({ accessToken,refreshToken, message: 'Login successful', email: user.email, name: user.name, _id:user._id});
   } catch (error) {
