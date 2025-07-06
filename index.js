@@ -8,6 +8,9 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import sellerRoutes from './routes/sellerRoutes.js'
 import reviewsRoutes from './routes/reviewsRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
+import LikedProductsRoutes from "./routes/likedProductsRoutes.js"
+import Wishlist from "./routes/wishlistRoutes.js"
+
 import { authMiddleware } from './middleware/authMiddleware.js';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
@@ -68,8 +71,8 @@ app.use("/api/orders", authMiddleware, orderRoutes);
 app.use("/api/notifications", authMiddleware, notificationRoutes);
 app.use('/api/sellers',authMiddleware, sellerRoutes)
 app.use('/api/reviews', authMiddleware,reviewsRoutes)
-
-
+app.use('/api/liked-products', authMiddleware, LikedProductsRoutes)
+app.use('/api/wishlist', authMiddleware, Wishlist)
 
 
 // Public route (no authentication required)

@@ -12,7 +12,9 @@ export async function createProduct(req, res) {
         const userId = req.user._id;
         const { 
             description, 
-            price,  
+            price, 
+            marketPrice,
+            note,  
             category, 
             title,
             subcategory, 
@@ -63,11 +65,23 @@ export async function createProduct(req, res) {
         const imageUrls = results.map(result => result.secure_url);
         const imageUrl = imageUrls[0];
 
+        const parsedPrice = Number(price);
+        const parsedMarketPrice = marketPrice ? Number(marketPrice) : undefined;
+
+        if (isNaN(parsedPrice) || parsedPrice <= 0) {
+            return res.status(400).json({ message: "Please enter a valid price." });
+        }
+
+        if (marketPrice && isNaN(parsedMarketPrice)) {
+            return res.status(400).json({ message: "Market price must be a valid number." });
+        }
         //console.log("i got called3")
         const newProduct = new Product({
             userId,
             description,
-            price: Number(price),
+            price: parsedPrice,
+            marketPrice: parsedMarketPrice, 
+            note: note?.trim(), 
             title,
             imageUrl, 
             imageUrls,
@@ -225,7 +239,7 @@ export async function searchProduct(req, res) {
     try {
         const searchTerm = req.params.key.trim(); // Trim whitespace from search term
         //console.log("search term:", searchTerm)
-        if (!searchTerm || searchTerm.length < 2) {
+        if (!searchTerm || searchTerm.length < 1) {
             return res.status(400).json({ 
                 message: "Search term must be at least 2 characters long" 
             });
@@ -234,7 +248,7 @@ export async function searchProduct(req, res) {
         // Search products with text index and filter banned sellers in single query
         const products = await Product.find({
             $and: [
-                { $text: { $search: searchTerm } },
+                { title: { $regex: new RegExp(searchTerm, 'i') } },
                 { sellerStatus: { $ne: "Banned" } } // Filter by sellerStatus in Product
             ]
         })

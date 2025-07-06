@@ -15,6 +15,12 @@ const ProductSchema = new Schema(
     discountPercentage: {
       type: Number
     },
+    marketPrice: {
+      type: Number
+    },
+    note: {
+      type: String
+    },
     userId: { 
       type: Schema.Types.ObjectId, 
       ref: 'User', // Reference to the User model
@@ -38,7 +44,8 @@ const ProductSchema = new Schema(
         "fashion_accessories",
         "stationery",
         "health_wellbeing",
-        "furniture"
+        "furniture",
+        "books"
       ]
     },
     subcategory: { type: String },
@@ -53,6 +60,14 @@ const ProductSchema = new Schema(
       required: true
     },
     clickCount: {
+      type: Number,
+      default: 0
+    },
+    wishlistsCount: {
+      type: Number,
+      default: 0
+    },
+    likesCount: {
       type: Number,
       default: 0
     },
