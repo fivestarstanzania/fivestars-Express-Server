@@ -13,8 +13,10 @@ export async function createProduct(req, res) {
         const { 
             description, 
             price, 
-            marketPrice,
-            note,  
+            regularPrice,
+            wholesalePrice,
+            supplierName, 
+            supplierContat, 
             category, 
             title,
             subcategory, 
@@ -66,22 +68,29 @@ export async function createProduct(req, res) {
         const imageUrl = imageUrls[0];
 
         const parsedPrice = Number(price);
-        const parsedMarketPrice = marketPrice ? Number(marketPrice) : undefined;
+        const parsedRegularPrice = regularPrice ? Number(regularPrice) : undefined;
+        const parsedWholesalePrice = wholesalePrice ? Number(wholesalePrice) : undefined;
 
         if (isNaN(parsedPrice) || parsedPrice <= 0) {
             return res.status(400).json({ message: "Please enter a valid price." });
         }
 
-        if (marketPrice && isNaN(parsedMarketPrice)) {
-            return res.status(400).json({ message: "Market price must be a valid number." });
+        if (regularPrice && isNaN(parsedRegularPrice)) {
+            return res.status(400).json({ message: "Regular price must be a valid number." });
+        }
+
+        if (wholesalePrice && isNaN(parsedWholesalePrice)) {
+            return res.status(400).json({ message: "Wholesale price must be a valid number." });
         }
         //console.log("i got called3")
         const newProduct = new Product({
             userId,
             description,
             price: parsedPrice,
-            marketPrice: parsedMarketPrice, 
-            note: note?.trim(), 
+            regularPrice: parsedRegularPrice,
+            wholesalePrice: parsedWholesalePrice, 
+            supplierName: supplierName?.trim(),
+            supplierContat: supplierContat?.trim(), 
             title,
             imageUrl, 
             imageUrls,
@@ -271,7 +280,8 @@ export async function searchProduct(req, res) {
         });
         
         if (validProducts.length === 0) {
-            return res.status(404).json({ 
+            return res.status(200).json({ 
+                products: [],
                 message: "No products found matching your search",
                 suggestions: ["Try different keywords", "Check your spelling"]
             });

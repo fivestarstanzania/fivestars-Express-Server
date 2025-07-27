@@ -15,10 +15,16 @@ const ProductSchema = new Schema(
     discountPercentage: {
       type: Number
     },
-    marketPrice: {
+    regularPrice: {
       type: Number
     },
-    note: {
+    wholesalePrice: {
+      type: Number
+    },
+    supplierName: {
+      type: String
+    },
+    supplierContat:{
       type: String
     },
     userId: { 

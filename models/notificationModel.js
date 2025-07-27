@@ -16,11 +16,11 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["Order", "Promotion", "System", "UserAction"], // Example types
+    enum: ["Order", "Offer", "System", "Price_drop", "Others"], // Example types
     required: true,
   },
   metadata: {
-    type: Object, // Additional data (e.g., order ID, product info)
+    type: Object, // Additional data (e.g., order ID, product info)orderId: String, productId: String,offerId: String,deepLink: String 
     default: {},
   },
   isRead: {

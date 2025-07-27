@@ -1,26 +1,60 @@
 import Notification from "../models/notificationModel.js";
+import User from "../models/User.js";
 import {io, getReceiverSocketId } from "../socket/socket.js";
+import { sendExpoPushNotification } from "../utils/sendNotification.js";
 
 export async function sendNotification(req, res) {
   try {
-    const { receiverId, message } = req.body;
+    const { receiverId, message, title, type, metadata, sendToAll } = req.body;
 
-    // Save the notification to the database
-    const newNotification = new Notification({ receiverId, message });
+    // Send to all users
+    if (sendToAll) {
+      const users = await User.find({}, '_id expoPushToken');
+      
+      const notifications = users.map(user => ({
+        receiverId: user._id,
+        title,
+        message,
+        type,
+        metadata
+      }));
+      await Notification.insertMany(notifications);
+      io.emit('newGlobalNotification');
+
+      // Send push notifications
+      const pushPromises = users.map(user => 
+        sendExpoPushNotification(user.expoPushToken, title, message)
+      );
+      await Promise.allSettled(pushPromises);
+
+      return res.status(201).json({ message: "Notification sent to all users!" });
+    }
+
+
+    // Send to specific user
+    const newNotification = new Notification({ 
+      receiverId, 
+      title,
+      message,
+      type,
+      metadata
+    });
     await newNotification.save();
     
-    // Emit a real-time notification via Socket.IO
-    //use socket
-        
-        
-   
+    // Emit via socket
+    const socketId = getReceiverSocketId(receiverId);
+    if (socketId) io.to(socketId).emit('newNotification', newNotification);
 
-    res.status(201).json({ message: "Notification sent and saved!", notification: newNotification });
+    // Push notification
+    const user = await User.findById(receiverId, 'expoPushToken');
+    await sendExpoPushNotification(user?.expoPushToken, title, message);
+
+    res.status(201).json(newNotification);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ message: "Failed to send notification" });
   }
-}
+
+}   
 
 export async function markNotificationAsRead(req, res) {
   const userId = req.user._id;
