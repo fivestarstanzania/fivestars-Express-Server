@@ -141,11 +141,6 @@ export async function getAllOrders(req, res) {
   try {
     // Retrieve all orders where the buyer's ID matches the receiverId
     const orders = await Order.find({ "buyer.id": receiverId }).sort({createdAt:-1});
-
-    if (!orders || orders.length === 0) {
-      return res.status(404).json({ message: "No orders found for this buyer." });
-    }
-
     const formattedOrders = orders.map((order) => ({
       ...order._doc,
       createdAt: new Date(order.createdAt).toLocaleString(), // Format the date
@@ -162,9 +157,7 @@ export async function getSellerOrders(req, res) {
   try {
     // Retrieve all orders where the seller's ID matches the receiverId
     const orders = await Order.find({ "seller.id": receiverId }).sort({createdAt:-1});
-    if (!orders || orders.length === 0) {
-      return res.status(404).json({ message: "No orders found for this seller." });
-    }
+    
     // Format createdAt for each order
     const formattedOrders = orders.map((order) => ({
       ...order._doc,

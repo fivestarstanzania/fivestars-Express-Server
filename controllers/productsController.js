@@ -318,6 +318,7 @@ export async function getCategoryProduct(req,res) {
             select: 'name activityStatus',
             match: { activityStatus: { $ne: "Banned" } }
         })
+        .sort({ createdAt: -1 })
         .lean();
 
         const validProducts = products.filter(product => product.sellerId);
