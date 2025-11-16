@@ -6,9 +6,14 @@ import SearchLog from '../models/SearchLog.js';
 import ProductClickLog from '../models/ProductClickLog.js';
 import  {cloudinary}  from '../utils/cloudinary.js';
 import { isSellerBanned } from '../utils/isSellerBanned.js';
+import streamifier from 'streamifier';
+
 export async function createProduct(req, res) { 
+    console.log("in the uploading started")
     const files = req.files || [req.file].filter(Boolean); // Handle both formats
     try {
+        console.log("STEP 1: Validating Seller...");
+
         const userId = req.user._id;
         const { 
             description, 
@@ -20,8 +25,6 @@ export async function createProduct(req, res) {
             category, 
             title,
             subcategory, 
-            quantity,
-            deliveryOption,
             specifications,
             returnPolicy
         } = req.body;
@@ -31,16 +34,27 @@ export async function createProduct(req, res) {
             return res.status(400).json({ message: "No image file uploaded." });
         }
         if (files.length > 4) {
+            return res.status(400).json({ message: "Maximum 4 images allowed." });
+        }
+        console.log("in the uploading image was uploaded")
+        if (files.length > 4) {
             return res.status(400).json({ message: "Maximum 4 images allowed per product." });
         }
+
+        // === Validate Seller ===
         const seller = await Seller.findOne({userId});
         if (!seller) {
+            console.log("ERROR: Seller not found.");
             return res.status(404).json({ message: "Seller not found." });
         }
         const sellerId = seller._id;
+
         if(await isSellerBanned(sellerId)){
+            console.log("ERROR: Seller is banned.");
             return res.status(403).json({ message: "You are banned from adding products." });
         }
+
+        // === Product Limit ===
         const productCount = await Product.countDocuments({sellerId});
         //const maxProductAllowed = 10;
         
@@ -49,21 +63,54 @@ export async function createProduct(req, res) {
         if (productCount >= maxSellerProductAllowed){
             return res.status(403).json({message:`Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`})
         }
+
         
+        console.log("in the uploading, uploading image to cloudinary ")
         // Upload all images to Cloudinary
-        const uploadPromises = files.map(file => {
-            const b64 = Buffer.from(file.buffer).toString("base64");
-            const dataURI = `data:${file.mimetype};base64,${b64}`;
-            return cloudinary.uploader.upload(dataURI, {
-                folder:'products',
-                quality: 'auto',
-                fetch_format: 'auto',
-                width: 800,
-                crop: 'limit',
-                format: 'webp'
+        const uploadStreamPromise = (file) => {
+            return new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    {
+                        folder: "products",
+                        quality: "auto",
+                        fetch_format: "auto",
+                        width: 800,
+                        crop: "limit",
+                        format: "webp",
+                        timeout: 60000 // 60 seconds timeout
+                    },
+                    (error, result) => {
+                        if (error) {
+                            console.log("Cloudinary ERROR:", error);
+                            return reject(error);
+                        }
+                        resolve(result);
+                    }
+                );
+
+                // Stream file buffer to Cloudinary
+                streamifier.createReadStream(file.buffer).pipe(stream);
             });
+        };
+
+        // Upload all files in parallel
+        const uploadPromises = files.map((file, index) => {
+            console.log(`Uploading image ${index + 1}/${files.length}...`);
+            return uploadStreamPromise(file);
         });
-        const results = await Promise.all(uploadPromises);
+        
+        let results;
+        try {
+            results = await Promise.all(uploadPromises);
+            console.log("All images uploaded successfully.");
+        } catch (cloudError) {
+            console.log("ERROR: Cloudinary upload failed →", cloudError);
+            return res.status(500).json({
+                message: "Failed to upload images to Cloudinary.",
+                error: cloudError.message || cloudError
+            });
+        }
+        
         const imageUrls = results.map(result => result.secure_url);
         const imageUrl = imageUrls[0];
 
@@ -82,7 +129,7 @@ export async function createProduct(req, res) {
         if (wholesalePrice && isNaN(parsedWholesalePrice)) {
             return res.status(400).json({ message: "Wholesale price must be a valid number." });
         }
-        //console.log("i got called3")
+        console.log("creating new product document")
         const newProduct = new Product({
             userId,
             description,
@@ -97,14 +144,12 @@ export async function createProduct(req, res) {
             category,
             subcategory,
             sellerId,
-            quantity: Number(quantity),
-            deliveryOption,
             returnPolicy,
             specifications: JSON.parse(specifications)
         });
         //console.log("i got called4")
         await newProduct.save();
-        //console.log('the product created success')
+        console.log('the product created success')
         //console.log("i got called5")
         res.status(200).json({ message: 'Product created successfully', newProduct });
     } catch (error) {
@@ -123,7 +168,6 @@ export async function updateProduct(req, res) {
             title, 
             price, 
             description, 
-            quantity 
         } = req.body;
 
         // 1. Verify product exists and belongs to seller
@@ -138,8 +182,7 @@ export async function updateProduct(req, res) {
         if (title !== undefined) updates.title = title;
         if (price !== undefined) updates.price = Number(price);
         if (description !== undefined) updates.description = description;
-        if (quantity !== undefined) updates.quantity = Number(quantity);
-        
+       
         // Add update timestamp
         updates.updatedAt = new Date();
 
@@ -390,11 +433,37 @@ export async function deleteProduct(req, res){
             return res.status(403).json({ error: 'Cannot delete product from banned seller' });
         }
 
-        const publicId = product.imageUrl.split('/').pop().split('.')[0];
-        await cloudinary.uploader.destroy(publicId);
+        // Helper to extract full Cloudinary public_id
+        // Extract Cloudinary public_id correctly
+        const getPublicId = (url) => {
+            if (!url) return null;
 
+            const cleanUrl = url.split("?")[0]; // remove any query params
+            const match = cleanUrl.match(/\/upload\/v\d+\/(.+)\.[a-zA-Z0-9]+$/);
+
+            // match[1] = folder/filename WITHOUT extension → correct Cloudinary public_id
+            return match ? match[1] : null;
+        };
+
+        const images = product.imageUrls || [];
+
+        // Delete all Cloudinary images for this product
+        const deletionPromises = images.map((url) => {
+            const publicId = getPublicId(url);
+
+            if (!publicId) {
+                console.log("⚠️ Could not extract public_id from:", url);
+                return null;
+            }
+
+            return cloudinary.uploader.destroy(publicId)
+                .then(result => console.log("✔ Deleted:", publicId))
+                .catch(err => console.log("❌ Cloudinary delete error:", err.message));
+        });
+
+        await Promise.all(deletionPromises);
+        // Delete product from DB
         await Product.deleteOne({ _id: productId });
-
         res.status(200).json({ 
             message: 'Product deleted successfully!' 
         });

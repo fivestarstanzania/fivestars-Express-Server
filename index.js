@@ -16,25 +16,34 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { app, server } from './socket/socket.js';
 import { sessionConfig } from './config/session.js';
+import { redisClient } from './config/redis.js';
 import cookieParser from "cookie-parser"
 import path from 'path'
 import { errorHandler } from './utils/errorHandler.js';
 
 dotenv.config();
 
-const PORT=process.env.PORT;
+const PORT=process.env.PORT||10000 ;
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_PROD,
   process.env.REACT_URL, 
-  "https://fivestarstanzania.netlify.app",
+].filter(Boolean);
 
-];
+
+// Public route (no authentication required)
+app.get('/public', (req, res) => {
+  res.sendFile(path.join(path.resolve(), 'index.html'));
+});
+app.get('/privacy-policy', (req, res) => {
+  res.sendFile(path.join(path.resolve(), 'privacy-policy.html'));
+});
 
 //Middlewares
 app.use(json({limit:'50mb'}));
 app.use(urlencoded({limit:'50mb', extended:true}))
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -75,13 +84,6 @@ app.use('/api/liked-products', authMiddleware, LikedProductsRoutes)
 app.use('/api/wishlist', authMiddleware, Wishlist)
 
 
-// Public route (no authentication required)
-app.get('/public', (req, res) => {
-  res.sendFile(path.join(path.resolve(), 'index.html'));
-});
-app.get('/privacy-policy', (req, res) => {
-  res.sendFile(path.join(path.resolve(), 'privacy-policy.html'));
-});
 app.get('/delete', (req, res) => {
   res.sendFile(path.join(path.resolve(), 'delete.html'));
 });
@@ -97,26 +99,60 @@ app.use((req, res, next) => {
 // Global error handling middleware
 app.use(errorHandler);
 
-// Handle unhandled promise rejections
+// === Graceful Error Handling (DO NOT EXIT) ===
 process.on('unhandledRejection', (err) => {
-  console.log('UNHANDLED REJECTION!  Shutting down...');
-  console.error(err);
-  server.close(() => {
-    process.exit(1);
-  });
+  console.error('UNHANDLED REJECTION:', err);
+  // Let Render restart
 });
 
-// Handle uncaught exceptions
+
 process.on('uncaughtException', (err) => {
-  console.log('UNCAUGHT EXCEPTION!  Shutting down...');
-  console.error(err);
-  process.exit(1);
+  console.error('UNCAUGHT EXCEPTION:', err);
+  // Let Render restart
 });
 
-server.listen(PORT, ()=>{
-  console.log(`Example app listening on port ${PORT}`)
-  connectDB()
-})
+// === START SERVER ONLY AFTER DB + REDIS ===
+const startServer = async () => {
+  try {
+    // 1. Connect to MongoDB (connectDB() already logs success)
+    await connectDB();
+
+    // 2. Redis auto-connects when created, but wait for 'ready' event
+    // ioredis connects automatically, no need to call .connect()
+    await new Promise((resolve, reject) => {
+      if (redisClient.status === 'ready') {
+        console.log('Redis already connected');
+        resolve();
+      } else {
+        redisClient.once('ready', () => {
+          console.log('Redis connected');
+          resolve();
+        });
+        redisClient.once('error', (err) => {
+          reject(err);
+        });
+        // Set timeout to avoid waiting forever
+        setTimeout(() => {
+          reject(new Error('Redis connection timeout'));
+        }, 10000);
+      }
+    });
+
+    // 3. Apply session *after* Redis is ready
+    app.use(sessionConfig);
+
+    // 4. Start server
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1); // Only exit on startup failure
+  }
+};
+
+startServer();
 
 
 

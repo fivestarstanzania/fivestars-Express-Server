@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "nodemon index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
@@ -42,6 +43,7 @@
     "passport-oauth": "^1.0.0",
     "redis": "^4.7.0",
     "socket.io": "^4.8.1",
+    "streamifier": "^0.1.1",
     "validator": "^13.12.0"
   },
   "devDependencies": {

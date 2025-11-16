@@ -19,47 +19,147 @@ dotenv.config();
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(CLIENT_ID);
+export const registerGoogleUsers = async (req, res) => {
+  console.log("Google login called");
 
-export const registerGoogleUsers =  async (req,res)=>{
-    console.log("google login  got called")
-    try {
-        
-        const {token} = req.body;
+  try {
+      // ===== Check CLIENT_ID is configured =====
+      if (!CLIENT_ID) {
+          console.error("GOOGLE_CLIENT_ID is not configured in environment variables");
+          return res.status(500).json({
+              success: false,
+              message: "Server configuration error. Please contact support."
+          });
+      }
 
-        //verify google token 
-        const ticket = await client.verifyIdToken({
-            idToken:token,
-            audience:CLIENT_ID,
-        });
+      const { token } = req.body;
 
-        const payload = ticket.getPayload();
-        //const { sub: googleId, name, email } = payload;
-        const { sub: googleId, name, email } = payload;
+      // ===== Validate token exists and is not empty/whitespace =====
+      if (!token || typeof token !== 'string' || !token.trim()) {
+          console.error("Invalid token received:", { token, type: typeof token });
+          return res.status(400).json({
+              success: false,
+              message: "Google token is missing or invalid. Please try again."
+          });
+      }
 
-        //console.log(picture,locale, given_name,family_name)
-        // Find or create user
-        let user = await User.findOne({ email });
+      // Trim whitespace from token
+      const trimmedToken = token.trim();
 
-        if (!user) {
-            user = new User({
-              googleId,
-              name,
-              email,
-              authMethod: 'google',
-              role: 'customer',
-            });
-            await user.save();
-        }
-        const accessToken = jwt.sign({ userId: user._id, userEmail: user.email}, process.env.JWT_SECRET, { expiresIn: '15m' });
-        
-        const refreshToken = jwt.sign({userId: user._id}, process.env.JWT_REFRESH_SECRET,{expiresIn:'30d'});
-    
-        res.json({ accessToken,refreshToken, message: 'Login successful', email: user.email, name: user.name, _id:user._id});
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(401).json({ message: 'Authentication failed' });
-    }
-}
+      // Additional validation: token should be a JWT-like string (has dots)
+      if (!trimmedToken.includes('.')) {
+          console.error("Token format is invalid - not a valid JWT");
+          return res.status(400).json({
+              success: false,
+              message: "Invalid token format. Please log in again."
+          });
+      }
+
+      let payload;
+      try {
+          // ===== Verify Google Token =====
+          const ticket = await client.verifyIdToken({
+              idToken: trimmedToken,
+              audience: CLIENT_ID,
+          });
+          payload = ticket.getPayload();
+          
+          // Validate payload exists
+          if (!payload) {
+              throw new Error("Token verification returned no payload");
+          }
+      } catch (googleError) {
+          console.error("Google token verification failed:", googleError);
+          
+          // Provide more specific error messages
+          if (googleError.message && googleError.message.includes("requires an ID Token")) {
+              return res.status(400).json({
+                  success: false,
+                  message: "Invalid Google token. Please log in again."
+              });
+          }
+          
+          if (googleError.message && googleError.message.includes("expired")) {
+              return res.status(401).json({
+                  success: false,
+                  message: "Your session has expired. Please log in again."
+              });
+          }
+          
+          return res.status(401).json({
+              success: false,
+              message: "Invalid Google token. Please log in again."
+          });
+      }
+
+      const { sub: googleId, name, email } = payload;
+
+      // ===== Safety check again =====
+      if (!email) {
+          return res.status(400).json({
+              success: false,
+              message: "Google account did not return an email."
+          });
+      }
+
+      // ===== Find user in DB =====
+      let user = await User.findOne({ email });
+
+      if (!user) {
+          // ===== Create new user =====
+          try {
+              user = new User({
+                  googleId,
+                  name,
+                  email,
+                  authMethod: "google",
+                  role: "customer",
+              });
+              await user.save();
+          } catch (dbError) {
+              console.error("DB Error while creating user:", dbError);
+              return res.status(500).json({
+                  success: false,
+                  message: "Internal server error during account creation."
+              });
+          }
+      }
+
+      // ===== Generate tokens =====
+      const accessToken = jwt.sign(
+          { userId: user._id, userEmail: user.email },
+          process.env.JWT_SECRET,
+          { expiresIn: "15m" }
+      );
+
+      const refreshToken = jwt.sign(
+          { userId: user._id },
+          process.env.JWT_REFRESH_SECRET,
+          { expiresIn: "30d" }
+      );
+
+      return res.json({
+          success: true,
+          message: "Login successful",
+          accessToken,
+          refreshToken,
+          email: user.email,
+          name: user.name,
+          _id: user._id,
+      });
+
+  } catch (error) {
+      console.error("Unexpected login error:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Request body:", JSON.stringify(req.body, null, 2));
+
+      return res.status(500).json({
+          success: false,
+          message: "Unexpected server error. Please try again later.",
+      });
+  }
+};
+
 export const registerAppleUsers =  async (req,res)=>{
   //console.log("Apple login  got called")
   try {
