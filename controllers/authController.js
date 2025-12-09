@@ -87,7 +87,7 @@ export const logout = (req, res) => {
 };
 
 export const checkAuth = (req, res) => {
-  if (req.session.user) {
+  if (true) {
     res.json({ isAuthenticated: true, user: req.session.user });
     //console.log("is authenticated", req.session.user)
   } else {

@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Review from '../models/ReviewsModel.js'
 import SellerApplication from "../models/SellerApplication.js"
 import  {cloudinary}  from '../utils/cloudinary.js';
+import Product from '../models/ProductModel.js';
 
 export const getSellerById = async (req, res) => {
   try { 
@@ -97,7 +98,7 @@ export const submitApplication = async (req, res) => {
       //console.log("debug 2")
 
       const result = await cloudinary.uploader.upload(profileImage, {
-        folder:'SellerApplications',
+        folder:'sellers',
         quality: 'auto',
         fetch_format: 'auto',
         width: 800, // Max width for mobile
@@ -141,5 +142,154 @@ export const getMyApplication = async (req, res) => {
       res.json(application || { status: 'not-applied' });
   } catch (error) {
       res.status(500).json({ message: error.message });
+  }
+};
+
+
+// Get top sellers with most products (for home screen)
+export const getTopSellers = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 5;
+    
+    // Aggregate to get sellers with most products
+    const topSellers = await Product.aggregate([
+      {
+        $match: {
+          sellerStatus: "Active"
+        }
+      },
+      {
+        $group: {
+          _id: "$sellerId",
+          productCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { productCount: -1 }
+      },
+      {
+        $limit: limit
+      },
+      {
+        $lookup: {
+          from: "sellers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "sellerInfo"
+        }
+      },
+      {
+        $unwind: "$sellerInfo"
+      },
+      {
+        $match: {
+          "sellerInfo.activityStatus": "Active"
+        }
+      },
+      {
+        $project: {
+          _id: "$sellerInfo._id",
+          sellerUserId: "$sellerInfo.userId",
+          name: "$sellerInfo.name",
+          businessName: "$sellerInfo.businessName",
+          profileImage: "$sellerInfo.profileImage",
+          description: "$sellerInfo.description",
+          productCount: 1,
+          activityStatus: "$sellerInfo.activityStatus"
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: topSellers
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get all sellers sorted by product count (for "See All" screen)
+export const getAllSellersSortedByProducts = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const totalSellers = await Seller.countDocuments({ activityStatus: "Active" });
+
+    // Get sellers with product count
+    const sellers = await Seller.aggregate([
+      {
+        $match: { activityStatus: "Active" }
+      },
+      {
+        $lookup: {
+          from: "products",
+          let: { sellerId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$sellerId", "$$sellerId"] },
+                    { $eq: ["$sellerStatus", "Active"] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "products"
+        }
+      },
+      {
+        $addFields: {
+          productCount: { $size: "$products" }
+        }
+      },
+      {
+        $sort: { productCount: -1 }
+      },
+      {
+        $skip: skip
+      },
+      {
+        $limit: limit
+      },
+      {
+        $project: {
+          name: 1,
+          businessName: 1,
+          profileImage: 1,
+          description: 1,
+          productCount: 1,
+          activityStatus: 1,
+          email: 1,
+          phone: 1,
+          businessAddress:1,
+          sellerUserId: "$userId"
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: sellers,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalSellers / limit),
+        totalSellers,
+        hasMore: page * limit < totalSellers
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };

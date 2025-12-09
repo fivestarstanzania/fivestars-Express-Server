@@ -4,7 +4,7 @@ const notificationSchema = new mongoose.Schema({
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    default: null,
   },
   title: {
     type: String,
@@ -16,7 +16,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["Order", "Offer", "System", "Price_drop", "Others"], // Example types
+    enum: ["Order", "Offer", "System", "Price_drop", "Others"], // Example types #promotions,announcements
     required: true,
   },
   metadata: {

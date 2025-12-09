@@ -32,6 +32,15 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 
+// Basic health check endpoint - CRITICAL for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    service: 'backend'
+  });
+});
+
 // Public route (no authentication required)
 app.get('/public', (req, res) => {
   res.sendFile(path.join(path.resolve(), 'index.html'));
@@ -54,7 +63,7 @@ app.use(cors({
     }
   },
   credentials: true, 
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
@@ -68,7 +77,6 @@ app.use(cors({
 app.options('*', cors());
 
 app.set('trust proxy', 1); // Required for secure cookies on Render
-app.use(sessionConfig)
 app.use(cookieParser());
 
 

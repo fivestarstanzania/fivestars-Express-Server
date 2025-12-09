@@ -3,51 +3,40 @@ import User from "../models/User.js";
 import {io, getReceiverSocketId } from "../socket/socket.js";
 import { sendExpoPushNotification } from "../utils/sendNotification.js";
 
+
+// ========================================================
+// 1. Send notification TO SPECIFIC USER ONLY
+// ========================================================
 export async function sendNotification(req, res) {
   try {
-    const { receiverId, message, title, type, metadata, sendToAll } = req.body;
+    const { receiverId, message, title, type, metadata } = req.body;
 
-    // Send to all users
-    if (sendToAll) {
-      const users = await User.find({}, '_id expoPushToken');
-      
-      const notifications = users.map(user => ({
-        receiverId: user._id,
-        title,
-        message,
-        type,
-        metadata
-      }));
-      await Notification.insertMany(notifications);
-      io.emit('newGlobalNotification');
-
-      // Send push notifications
-      const pushPromises = users.map(user => 
-        sendExpoPushNotification(user.expoPushToken, title, message)
-      );
-      await Promise.allSettled(pushPromises);
-
-      return res.status(201).json({ message: "Notification sent to all users!" });
+    if (!receiverId || !title || !message) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-
     // Send to specific user
-    const newNotification = new Notification({ 
-      receiverId, 
+    const newNotification = new Notification({
+      receiverId,
       title,
       message,
       type,
-      metadata
+      metadata: metadata || {},
     });
+
     await newNotification.save();
     
-    // Emit via socket
+    // SOCKET
     const socketId = getReceiverSocketId(receiverId);
-    if (socketId) io.to(socketId).emit('newNotification', newNotification);
+    if (socketId) {
+      io.to(socketId).emit("newNotification", newNotification);
+    }
 
-    // Push notification
-    const user = await User.findById(receiverId, 'expoPushToken');
-    await sendExpoPushNotification(user?.expoPushToken, title, message);
+    // PUSH NOTIFICATION
+    const user = await User.findById(receiverId, "expoPushToken");
+    if (user?.expoPushToken) {
+      await sendExpoPushNotification(user.expoPushToken, title, message);
+    }
 
     res.status(201).json(newNotification);
   } catch (error) {
@@ -56,6 +45,10 @@ export async function sendNotification(req, res) {
 
 }   
 
+
+// ========================================================
+// 2. Mark as read
+// ========================================================
 export async function markNotificationAsRead(req, res) {
   const userId = req.user._id;
   
@@ -93,38 +86,65 @@ export async function markNotificationAsRead(req, res) {
   }
 }
 
+
+
+// ========================================================
+// 3. GET all notifications for user including broadcast
+// ========================================================
 export async function getNotifications(req, res) {
   const userId = req.user._id;
+
   try {
-    //const { userId } = req.params; // Extract receiverId from request params
+    // Fetch role from DB (safe for old tokens)
+    const user = await User.findById(userId).select("role");
+    const role = user?.role || "customer"; // fallback default
 
-    // Fetch notifications where receiverId matches the provided id, sorted by latest
-    const notifications = await Notification.find({ receiverId: userId })
-      .sort({ createdAt: -1 }) // Sort by createdAt in descending order
-      .exec();
+    const notifications = await Notification.find({
+      $or: [
+        { receiverId: userId }, // personal
+        { receiverId: null, "metadata.toward": "all" }, // broadcast
+        { receiverId: null, "metadata.toward": role }, // role-based broadcast
+      ]
+    }).sort({ createdAt: -1 });
 
-    // Return notifications
     res.status(200).json({ notifications });
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({ error: 'An error occurred while fetching notifications' });
-  }
 
+  } catch (error) {
+    console.error("Error fetching notifications:", error);
+    res.status(500).json({ error: "Unable to get notifications" });
+  }
 }
 
+
+
+// ========================================================
+// 4. GET unread count
+// ========================================================
 export async function getUnreadNotifications(req, res) {
   const userId = req.user._id;
-  try {
-    // Fetch all unread notifications for the user (isRead: false)
-    const unreadNotifications = await Notification.find({ receiverId: userId, isRead: false })
 
-    // Return unread notifications and their count
+  try {
+    const user = await User.findById(userId).select("role");
+    const role = user?.role || "customer";
+
+    const unreadNotifications = await Notification.find({
+      isRead: false,
+      $or: [
+        { receiverId: userId },
+        { receiverId: null, "metadata.toward": "all" },
+        { receiverId: null, "metadata.toward": role },
+      ]
+    });
+
     res.status(200).json({
       unreadCount: unreadNotifications.length,
     });
+
   } catch (error) {
-    console.error('Error fetching unread notifications:', error);
-    res.status(500).json({ error: 'An error occurred while fetching unread notifications' });
+    console.error(error);
+    res.status(500).json({ error: "Unable to fetch unread notifications" });
   }
 }
+
+
 

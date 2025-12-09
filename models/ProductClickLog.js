@@ -18,7 +18,7 @@ const ProductClickLogSchema = new Schema({
   },
   source: { 
     type: String, 
-    enum: ["search", "home", "category", "offer", "other"], 
+    enum: ["search", "home", "category", "offer","sellerProfile","popular", "other"], 
     default: "other" 
   },
   createdAt: { 

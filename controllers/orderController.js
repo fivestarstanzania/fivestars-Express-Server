@@ -178,13 +178,32 @@ export async function getOrderDetails(req, res) {
       return res.status(400).json({ message: "Order number or order ID is required." });
     }
     
-    const order = await Order.findById(orderId);
-    
+    const order = await Order.findById(orderId)
+      .populate({
+        path: "product.id",
+        select: "title name imageUrl imageUrls price", // ADD anything you want
+      });
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    res.status(200).json({ message: "Order details retrieved successfully", order });
+    // Combine product details
+    const orderWithProductTitle = {
+      ...order._doc,
+      product: {
+        ...order.product,
+        title: order.product?.id?.title || "Unknown product",
+        name: order.product?.id?.name,
+        fullImage: order.product?.id?.imageUrl,
+        images: order.product?.id?.imageUrls,
+      },
+    };
+
+
+    res.status(200).json({
+      message: "Order details retrieved successfully",
+      order: orderWithProductTitle,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to retrieve order details" });

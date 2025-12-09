@@ -7,168 +7,171 @@ import ProductClickLog from '../models/ProductClickLog.js';
 import  {cloudinary}  from '../utils/cloudinary.js';
 import { isSellerBanned } from '../utils/isSellerBanned.js';
 import streamifier from 'streamifier';
+import pLimit from 'p-limit';
 
-export async function createProduct(req, res) { 
-    console.log("in the uploading started")
-    const files = req.files || [req.file].filter(Boolean); // Handle both formats
-    try {
-        console.log("STEP 1: Validating Seller...");
 
-        const userId = req.user._id;
-        const { 
-            description, 
-            price, 
-            regularPrice,
-            wholesalePrice,
-            supplierName, 
-            supplierContat, 
-            category, 
-            title,
-            subcategory, 
-            specifications,
-            returnPolicy
-        } = req.body;
+export async function createProduct(req, res) {
+  console.log("in the uploading started");
 
-        const files = req.files || [req.file].filter(Boolean);
-        if (!files || files.length === 0) {
-            return res.status(400).json({ message: "No image file uploaded." });
-        }
-        if (files.length > 4) {
-            return res.status(400).json({ message: "Maximum 4 images allowed." });
-        }
-        console.log("in the uploading image was uploaded")
-        if (files.length > 4) {
-            return res.status(400).json({ message: "Maximum 4 images allowed per product." });
-        }
+  try {
+    const userId = req.user._id;
+    const {
+      description,
+      price,
+      regularPrice,
+      wholesalePrice,
+      supplierName,
+      supplierContat,
+      category,
+      title,
+      subcategory,
+      specifications,
+      returnPolicy
+    } = req.body;
 
-        // === Validate Seller ===
-        const seller = await Seller.findOne({userId});
-        if (!seller) {
-            console.log("ERROR: Seller not found.");
-            return res.status(404).json({ message: "Seller not found." });
-        }
-        const sellerId = seller._id;
-
-        if(await isSellerBanned(sellerId)){
-            console.log("ERROR: Seller is banned.");
-            return res.status(403).json({ message: "You are banned from adding products." });
-        }
-
-        // === Product Limit ===
-        const productCount = await Product.countDocuments({sellerId});
-        //const maxProductAllowed = 10;
-        
-        const maxSellerProductAllowed = seller.uploadLimit
-        //console.log("max allowed products are:", maxSellerProductAllowed)
-        if (productCount >= maxSellerProductAllowed){
-            return res.status(403).json({message:`Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`})
-        }
-
-        
-        console.log("in the uploading, uploading image to cloudinary ")
-        // Upload all images to Cloudinary
-        const uploadStreamPromise = (file) => {
-            return new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    {
-                        folder: "products",
-                        quality: "auto",
-                        fetch_format: "auto",
-                        width: 800,
-                        crop: "limit",
-                        format: "webp",
-                        timeout: 60000 // 60 seconds timeout
-                    },
-                    (error, result) => {
-                        if (error) {
-                            console.log("Cloudinary ERROR:", error);
-                            return reject(error);
-                        }
-                        resolve(result);
-                    }
-                );
-
-                // Stream file buffer to Cloudinary
-                streamifier.createReadStream(file.buffer).pipe(stream);
-            });
-        };
-
-        // Upload all files in parallel
-        const uploadPromises = files.map((file, index) => {
-            console.log(`Uploading image ${index + 1}/${files.length}...`);
-            return uploadStreamPromise(file);
-        });
-        
-        let results;
-        try {
-            results = await Promise.all(uploadPromises);
-            console.log("All images uploaded successfully.");
-        } catch (cloudError) {
-            console.log("ERROR: Cloudinary upload failed →", cloudError);
-            return res.status(500).json({
-                message: "Failed to upload images to Cloudinary.",
-                error: cloudError.message || cloudError
-            });
-        }
-        
-        const imageUrls = results.map(result => result.secure_url);
-        const imageUrl = imageUrls[0];
-
-        const parsedPrice = Number(price);
-        const parsedRegularPrice = regularPrice ? Number(regularPrice) : undefined;
-        const parsedWholesalePrice = wholesalePrice ? Number(wholesalePrice) : undefined;
-
-        if (isNaN(parsedPrice) || parsedPrice <= 0) {
-            return res.status(400).json({ message: "Please enter a valid price." });
-        }
-
-        if (regularPrice && isNaN(parsedRegularPrice)) {
-            return res.status(400).json({ message: "Regular price must be a valid number." });
-        }
-
-        if (wholesalePrice && isNaN(parsedWholesalePrice)) {
-            return res.status(400).json({ message: "Wholesale price must be a valid number." });
-        }
-        console.log("creating new product document")
-        const newProduct = new Product({
-            userId,
-            description,
-            price: parsedPrice,
-            regularPrice: parsedRegularPrice,
-            wholesalePrice: parsedWholesalePrice, 
-            supplierName: supplierName?.trim(),
-            supplierContat: supplierContat?.trim(), 
-            title,
-            imageUrl, 
-            imageUrls,
-            category,
-            subcategory,
-            sellerId,
-            returnPolicy,
-            specifications: JSON.parse(specifications)
-        });
-        //console.log("i got called4")
-        await newProduct.save();
-        console.log('the product created success')
-        //console.log("i got called5")
-        res.status(200).json({ message: 'Product created successfully', newProduct });
-    } catch (error) {
-        console.error("Error creating product: ", error, req.body);
-        res.status(500).json({ message: "Failed to create the product", error: error.message });
+    // single canonical files variable
+    const files = (req.files && req.files.length) ? req.files : (req.file ? [req.file] : []);
+    if (!files || files.length === 0) {
+      return res.status(400).json({ message: "No image file uploaded." });
     }
+    if (files.length > 4) {
+      return res.status(400).json({ message: "Maximum 4 images allowed per product." });
+    }
+
+    console.log("STEP 1: Validating Seller...");
+    const seller = await Seller.findOne({ userId });
+    if (!seller) return res.status(404).json({ message: "Seller not found." });
+
+    const sellerId = seller._id;
+    if (await isSellerBanned(sellerId)) {
+      return res.status(403).json({ message: "You are banned from adding products." });
+    }
+
+    const productCount = await Product.countDocuments({ sellerId });
+    const maxSellerProductAllowed = seller.uploadLimit || 10;
+    if (productCount >= maxSellerProductAllowed) {
+      return res.status(403).json({ message: `Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.` });
+    }
+
+    console.log("Uploading images to Cloudinary...");
+    const uploadStreamPromise = (file) =>
+      new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: "products",
+            quality: "auto",
+            fetch_format: "auto",
+            width: 800,
+            crop: "limit",
+            format: "webp"
+            // note: cloudinary uploader options vary by SDK/version — remove unsupported options if errors occur
+          },
+          (error, result) => {
+            if (error) {
+              console.log("Cloudinary ERROR:", error);
+              return reject(error);
+            }
+            resolve(result);
+          }
+        );
+
+        streamifier.createReadStream(file.buffer).pipe(stream);
+      });
+
+    const limit = pLimit(2); // concurrency 2
+    const uploadPromises = files.map((file, index) => {
+      console.log(`Queued upload ${index + 1}/${files.length}`);
+      return limit(() => uploadStreamPromise(file));
+    });
+
+    // <- THE KEY: wait for all uploads to finish
+    let results;
+    try {
+      results = await Promise.all(uploadPromises);
+      console.log("All images uploaded successfully.");
+    } catch (cloudError) {
+      console.log("ERROR: Cloudinary upload failed →", cloudError);
+      return res.status(500).json({
+        message: "Failed to upload images to Cloudinary.",
+        error: cloudError.message || cloudError
+      });
+    }
+
+    const imageUrls = results.map(r => r.secure_url);
+    const imageUrl = imageUrls[0];
+
+    // validate numeric prices
+    const parsedPrice = Number(price);
+    const parsedRegularPrice = regularPrice ? Number(regularPrice) : undefined;
+    const parsedWholesalePrice = wholesalePrice ? Number(wholesalePrice) : undefined;
+
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      return res.status(400).json({ message: "Please enter a valid price." });
+    }
+    if (regularPrice && isNaN(parsedRegularPrice)) {
+      return res.status(400).json({ message: "Regular price must be a valid number." });
+    }
+    if (wholesalePrice && isNaN(parsedWholesalePrice)) {
+      return res.status(400).json({ message: "Wholesale price must be a valid number." });
+    }
+
+    // parse specifications safely
+    let specsParsed = {};
+    if (specifications) {
+      try {
+        specsParsed = typeof specifications === "string" ? JSON.parse(specifications) : specifications;
+      } catch (parseErr) {
+        return res.status(400).json({ message: "Invalid specifications JSON." });
+      }
+    }
+
+    console.log("creating new product document");
+    const newProduct = new Product({
+      userId,
+      description,
+      price: parsedPrice,
+      regularPrice: parsedRegularPrice,
+      wholesalePrice: parsedWholesalePrice,
+      supplierName: supplierName?.trim(),
+      supplierContat: supplierContat?.trim(),
+      title,
+      imageUrl,
+      imageUrls,
+      category,
+      subcategory,
+      sellerId,
+      returnPolicy,
+      specifications: specsParsed
+    });
+
+    await newProduct.save();
+    console.log("the product created success");
+    res.status(200).json({ message: "Product created successfully", newProduct });
+  } catch (error) {
+    console.error("Error creating product: ", error, req.body);
+    res.status(500).json({ message: "Failed to create the product", error: error.message });
+  }
 }
 
 export async function updateProduct(req, res) {
+  console.log("in the updating started");
     try {
         const userId = req.user._id;
         const productId = req.params.productId;
-        
+        console.log("productId:", productId)
         // Only extract allowed fields from request body
         const { 
             title, 
             price, 
             description, 
+            regularPrice, 
+            wholesalePrice,
+            supplierName,
+            supplierContat,
+            returnPolicy
+
         } = req.body;
+        console.log("body:", req.body)
 
         // 1. Verify product exists and belongs to seller
         const product = await Product.findOne({ _id: productId, userId });
@@ -182,6 +185,11 @@ export async function updateProduct(req, res) {
         if (title !== undefined) updates.title = title;
         if (price !== undefined) updates.price = Number(price);
         if (description !== undefined) updates.description = description;
+        if (regularPrice !== undefined) updates.regularPrice = Number(regularPrice);
+        if (wholesalePrice !== undefined) updates.wholesalePrice = Number(wholesalePrice);
+        if (supplierName !== undefined) updates.supplierName = supplierName.trim();
+        if (supplierContat !== undefined) updates.supplierContat = supplierContat.trim();
+        if (returnPolicy !== undefined) updates.returnPolicy = returnPolicy;
        
         // Add update timestamp
         updates.updatedAt = new Date();
@@ -211,37 +219,37 @@ export async function updateProduct(req, res) {
         });
     }
 }
-
+// controllers/productController.js
 export async function getAllProducts(req, res) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(48, parseInt(req.query.limit) || 12); // cap limit to avoid huge responses
+    const skip = (page - 1) * limit;
 
-    try {
-       /* const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+    const filter = { sellerStatus: { $ne: "Banned" } };
 
-        const [products, total] = await Promise.all([
-            Product.find()
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Product.countDocuments()
-        ]);
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select("title price regularPrice imageUrl description createdAt") // return only needed fields
+        .lean(), // faster read
+      Product.countDocuments(filter),
+    ]);
 
-        res.status(200).json({
-            products,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page
-        });
-        */
-        const unfilteredProducts = await Product.find().sort({ createdAt: -1 });
-        const products = unfilteredProducts.filter(product => product.sellerStatus !== "Banned");
-
-        res.status(200).json(products);
-        //console.log(products)
-    } catch (error) {
-        res.status(500).json("Failed to get the products");
-    }
+    res.status(200).json({
+      products,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+    });
+  } catch (error) {
+    console.error("getAllProducts error:", error);
+    res.status(500).json({ message: "Failed to get the products" });
+  }
 }
+
 
 export async function getProduct(req, res) {
 
@@ -480,7 +488,10 @@ export async function deleteProduct(req, res){
 // Fetch products by seller ID
 export async function getSellerProducts(req, res) {
     try {
-        const { userId } = req.query;
+
+        const { userId, page = 1, limit = 10, search = "" } = req.query;
+
+        
         //console.log("userId:",userId) 
         if (!userId) {
             return res.status(400).json({ error: 'Seller user ID is required' });
@@ -497,12 +508,32 @@ export async function getSellerProducts(req, res) {
         }
         //console.log("text2")
         const sellerId = seller._id;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        const products = await Product.find({ sellerId })
+        // Build query with search functionality
+        let query = { sellerId };
+
+        if (search && search.trim() !== '') {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        const products = await Product.find(query)
         .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
         .lean();
         //console.log("text3")
-        res.status(200).json(products);
+        const total = await Product.countDocuments(query);
+
+    res.status(200).json({
+      products,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / limit),
+      totalProducts: total,
+    });
         //console.log(products)
     } catch (error) {
             console.error('Seller products error:', error);
@@ -576,3 +607,214 @@ export async function createLogClickedProducts(req, res) {
     res.status(500).json({ message: "Internal server error" });
   }
 }
+
+// Get all discounted products (full list)
+// Get all discounted products (full list)
+export const getDiscountedProducts = async (req, res) => {
+  try {
+    const {
+      limit = 20,
+      page = 1,
+      sortBy = "discount", // 'discount' or 'recent'
+      category,
+    } = req.query;
+
+    const perPage = parseInt(limit);
+    const currentPage = parseInt(page);
+    const skip = (currentPage - 1) * perPage;
+
+    const matchQuery = {
+      regularPrice: { $exists: true, $ne: null },
+      price: { $exists: true, $ne: null },
+      sellerStatus: "Active",
+    };
+
+    if (category && category !== "all") {
+      matchQuery.category = category;
+    }
+
+    const pipeline = [
+      { $match: matchQuery },
+
+      // Convert prices safely
+      {
+        $addFields: {
+          regularPriceNum: {
+            $cond: [
+              { $not: ["$regularPrice"] },
+              0,
+              { $toDouble: "$regularPrice" }
+            ]
+          },
+          priceNum: {
+            $cond: [
+              { $not: ["$price"] },
+              0,
+              { $toDouble: "$price" }
+            ]
+          }
+        }
+      },
+
+      // Only discounted items
+      {
+        $match: {
+          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
+        }
+      },
+
+      // Compute discount
+      {
+        $addFields: {
+          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
+          discountPercentage: {
+            $round: [
+              {
+                $multiply: [
+                  {
+                    $divide: [
+                      { $subtract: ["$regularPriceNum", "$priceNum"] },
+                      "$regularPriceNum",
+                    ]
+                  },
+                  100
+                ]
+              },
+              0
+            ]
+          }
+        }
+      }
+    ];
+
+    // Sorting
+    pipeline.push(
+      sortBy === "recent"
+        ? { $sort: { createdAt: -1 } }
+        : { $sort: { discountPercentage: -1, createdAt: -1 } }
+    );
+
+    // Pagination
+    pipeline.push({ $skip: skip }, { $limit: perPage });
+
+    // Project final fields
+    pipeline.push({
+      $project: {
+        _id: 1,
+        title: 1,
+        imageUrl: 1,
+        imageUrls: 1,
+        price: "$priceNum",
+        regularPrice: "$regularPriceNum",
+        discountAmount: 1,
+        discountPercentage: 1,
+        category: 1,
+        description: 1,
+        createdAt: 1,
+      },
+    });
+
+    const discountedProducts = await Product.aggregate(pipeline);
+    const totalProducts = await Product.countDocuments(matchQuery);
+
+    return res.status(200).json({
+      success: true,
+      data: discountedProducts,
+      pagination: {
+        currentPage,
+        totalPages: Math.ceil(totalProducts / perPage),
+        totalProducts,
+        hasMore: skip + perPage < totalProducts,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching discounted products:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch discounted products",
+    });
+  }
+};
+
+
+// Get all discounted products (for home screen - limited)
+// Get all discounted products (home screen - limited)
+export const getLimitedDiscountedProducts = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 6;
+
+    const discountedProducts = await Product.aggregate([
+      {
+        $match: {
+          regularPrice: { $exists: true, $ne: null },
+          price: { $exists: true, $ne: null },
+          sellerStatus: "Active"
+        }
+      },
+      {
+        // Convert price fields to numbers ALWAYS
+        $addFields: {
+          regularPriceNum: { $toDouble: "$regularPrice" },
+          priceNum: { $toDouble: "$price" }
+        }
+      },
+      {
+        // Only keep products where regularPrice > price
+        $match: {
+          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
+        }
+      },
+      {
+        $addFields: {
+          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
+          discountPercentage: {
+            $round: [
+              {
+                $multiply: [
+                  { $divide: [{ $subtract: ["$regularPriceNum", "$priceNum"] }, "$regularPriceNum"] },
+                  100
+                ]
+              },
+              0
+            ]
+          }
+        }
+      },
+      {
+        $sort: {
+          discountPercentage: -1,
+          createdAt: -1
+        }
+      },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          imageUrl: 1,
+          imageUrls: 1,
+          price: "$priceNum",
+          regularPrice: "$regularPriceNum",
+          discountAmount: 1,
+          discountPercentage: 1,
+          category: 1,
+          description: 1,
+          createdAt: 1,
+          clickCount: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: discountedProducts
+    });
+  } catch (error) {
+    console.error("Error fetching limited discounted products:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch limited discounted products"
+    });
+  }
+};
+

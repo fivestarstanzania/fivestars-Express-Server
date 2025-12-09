@@ -2,11 +2,13 @@ import Seller from "../../models/sellerModel.js";
 import User from "../../models/User.js";
 import Review from '../../models/ReviewsModel.js'
 import Product from "../../models/ProductModel.js";
-
+import SellerApplication from "../../models/SellerApplication.js";
 import multer from "multer";
 import {sellerStorage, cloudinary} from "../../utils/cloudinary.js"; 
-
+import Order from "../../models/OrderModel.js";
 export const upload = multer({ storage:sellerStorage });
+import mongoose from "mongoose";
+
 
 export const createSeller = async (req, res) => {
   try {
@@ -159,20 +161,49 @@ export const deleteSellerById = async (req, res) => {
 };
 
 export const getAllSellers = async (req, res) => {
-    try {
-      const sellers = await Seller.find();
-      const totalSellers = await Seller.countDocuments();
-      // Respond with both the total number and the products
-      res.status(200).json({
-        total: totalSellers,
-        sellers,
-      });
-      
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({message:"error fetching users"});
-    }
-}
+  try {
+    const sellers = await Seller.find().sort({ createdAt: -1 });
+
+    const sellersWithStats = await Promise.all(
+      sellers.map(async (seller) => {
+        const productCount = await Product.countDocuments({ sellerId: seller._id });
+
+        const orders = await Order.aggregate([
+  {
+    $match: {
+      "seller.id": seller.userId,   // <-- Correct match!
+      status: "Delivered",
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      totalSales: { $sum: "$product.productPrice" },
+    },
+  },
+]);
+
+
+        return {
+          ...seller.toObject(),
+          productCount,
+          totalSales: orders[0]?.totalSales || 0,
+        };
+      })
+    );
+
+    const totalSellers = await Seller.countDocuments();
+
+    res.status(200).json({
+      total: totalSellers,
+      sellers: sellersWithStats,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error fetching sellers" });
+  }
+};
+
 
 export const banSeller = async (req, res) => {
   try {
@@ -216,53 +247,264 @@ export const banSeller = async (req, res) => {
 };
 
 
-export const getAllApplications = async (req, res) => {
+export const getAllSellerApplications = async (req, res) => {
   try {
-      const applications = await SellerApplication.find({ status: 'pending' })
-          .populate('userId', 'name email');
-          
-      res.json(applications);
+    const { status } = req.query;
+
+    const query = {};
+
+    // Optional filtering: ?status=pending | approved | rejected
+    if (status) query.status = status;
+
+   
+    const applications = await SellerApplication.find(query)
+      .populate("userId", "name email") // optional: get user basic info
+      .populate("reviewedBy", "name email") // optional: admin info
+      .sort({ submittedAt: -1 }) // latest first
+     
+
+    const total = await SellerApplication.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      total: applications.length,
+      applications,
+    });
+
   } catch (error) {
-      res.status(500).json({ message: error.message });
+    console.error("Error fetching seller applications:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while retrieving seller applications",
+    });
   }
 };
 
-export const reviewApplication = async (req, res) => {
+export const getSellerApplicationById = async (req, res) => {
   try {
-      const { id } = req.params;
-      const { status, rejectionReason } = req.body;
-      const { id: adminId } = req.session.user;
-      
-      const application = await SellerApplication.findByIdAndUpdate(
-          id,
-          {
-              status,
-              rejectionReason,
-              reviewedAt: new Date(),
-              reviewedBy: adminId
-          },
-          { new: true }
-      );
-      
-      if (!application) {
-          return res.status(404).json({ message: 'Application not found' });
-      }
-      
-      // Update user's role if approved
-      if (status === 'approved') {
-          await User.findByIdAndUpdate(application.userId, {
-              role: 'pending-seller',
-              'sellerApplication.status': 'approved'
-          });
-      } else if (status === 'rejected') {
-          await User.findByIdAndUpdate(application.userId, {
-              'sellerApplication.status': 'rejected',
-              'sellerApplication.rejectionReason': rejectionReason
-          });
-      }
-      
-      res.json(application);
+    const { id } = req.params; // get application ID from URL
+
+    // Find application by ID and populate related user/admin info
+    const application = await SellerApplication.findById(id)
+      .populate("userId", "name email")       // applicant info
+      .populate("reviewedBy", "name email"); // admin who reviewed
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller application not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      application,
+    });
   } catch (error) {
-      res.status(500).json({ message: error.message });
+    console.error("Error fetching seller application:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while retrieving seller application",
+    });
+  }
+};
+
+export const updateSellerApplication = async (req, res) => {
+  try {
+    const { id } = req.params; // Application ID from URL
+    const updates = req.body;  // Fields to update
+
+    // Find application by ID and update
+    const updatedApplication = await SellerApplication.findByIdAndUpdate(
+      id,
+      updates,
+      { new: true, runValidators: true } // return updated doc & validate fields
+    ).populate("userId", "name email")
+     .populate("reviewedBy", "name email");
+
+    if (!updatedApplication) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller application not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Application updated successfully",
+      application: updatedApplication,
+    });
+  } catch (error) {
+    console.error("Error updating seller application:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating seller application",
+      error: error.message,
+    });
+  }
+};
+
+
+export const rejectSellerApplication = async (req, res) => {
+  try {
+    console.log("rejectSellerApplication called");
+    const { id } = req.params; // application ID
+    const { rejectionReason } = req.body; // reason for rejection
+    //const { id: adminId } = req.session.user; // admin who rejects
+
+    if (!rejectionReason || rejectionReason.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required",
+      });
+    }
+
+    // Find and update the application
+    const application = await SellerApplication.findByIdAndUpdate(
+      id,
+      {
+        status: "rejected",
+        rejectionReason,
+        reviewedAt: new Date(),
+      },
+      { new: true }
+    )
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller application not found",
+      });
+    }
+
+    
+    // Optionally, update the user document to reflect rejection
+    await User.findByIdAndUpdate(application.userId, {
+      "sellerApplication.status": "rejected",
+      "sellerApplication.rejectionReason": rejectionReason,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Application rejected successfully",
+      application,
+    });
+  } catch (error) {
+    console.error("Error rejecting seller application:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while rejecting application",
+      error: error.message,
+    });
+  }
+};
+
+// Delete seller application by ID
+export const deleteSellerApplication = async (req, res) => {
+  try {
+    const { id } = req.params; // Application ID from URL
+
+    // Find and delete the application
+    const deletedApplication = await SellerApplication.findByIdAndDelete(id);
+
+    if (!deletedApplication) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller application not found",
+      });
+    }
+
+     // Optionally, update the user document to reflect rejection
+    if (deletedApplication.userId) {
+      await User.findByIdAndUpdate(deletedApplication.userId, {
+        "sellerApplication.status": "not-applied",
+        "sellerApplication.rejectionReason":  "",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Seller application deleted successfully",
+      application: deletedApplication,
+    });
+  } catch (error) {
+    console.error("Error deleting seller application:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting seller application",
+      error: error.message,
+    });
+  }
+};
+
+
+
+// Admin approves a seller application
+export const approveSellerApplication = async (req, res) => {
+  console.log("Approve seller application called");
+  try {
+    
+    const { applicationId } = req.params;
+
+    // 1. Find the application
+    const application = await SellerApplication.findById(applicationId);
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller application not found",
+      });
+    }
+
+    // 2. Check if seller already exists
+    const existingSeller = await Seller.findOne({ userId: application.userId });
+if (existingSeller) {
+  return res.status(400).json({
+    success: false,
+    message: "This user is already registered as a seller",
+  });
+}
+
+    // 3. Create Seller from application data
+    const newSeller = new Seller({
+      userId: application.userId,
+      name: application.name,
+      email: application.email,
+      phone: application.phone,
+      description: application.description,
+      businessName: application.businessName,
+      businessAddress: application.businessAddress,
+      profileImage: application.profileImage || null,
+      activityStatus: "PendingAgreement", // Admin approved
+      hasAgreedToTerms: false,   // Assuming admin approval counts as agreement
+    });
+
+    const savedSeller = await newSeller.save();
+
+    // 4. Update the user role and sellerApplication status
+    await User.findByIdAndUpdate(application.userId, {
+      role: "seller",
+      "sellerApplication.status": "approved",
+      "sellerApplication.rejectionReason": "",
+    });
+
+    // 5. Update application status (optional: mark reviewed)
+    application.status = "approved";
+    application.reviewedAt = new Date();
+    // If you have an admin reference: application.reviewedBy = req.adminId;
+    await application.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Seller application approved and seller created successfully",
+      seller: savedSeller,
+      application,
+    });
+  } catch (error) {
+    console.error("Error approving seller application:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while approving seller application",
+      error: error.message,
+    });
   }
 };
