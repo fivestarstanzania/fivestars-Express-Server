@@ -219,22 +219,37 @@ export async function updateProduct(req, res) {
         });
     }
 }
+
 // controllers/productController.js
 export async function getAllProducts(req, res) {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(48, parseInt(req.query.limit) || 12); // cap limit to avoid huge responses
-    const skip = (page - 1) * limit;
+    const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
+    const limit = req.query.limit ? Math.min(48, parseInt(req.query.limit)) : null;
 
     const filter = { sellerStatus: { $ne: "Banned" } };
 
+    if (!page || !limit) {
+      // OLD APP → return full list
+      const products = await Product.find(filter)
+        .sort({ createdAt: -1 })
+        .select("title price regularPrice imageUrl description createdAt")
+        .lean();
+      return res.status(200).json({
+        products,
+        total: products.length,
+        pagination: false,
+      });
+    }
+
+    // NEW APP → paginated
+    const skip = (page - 1) * limit;
     const [products, total] = await Promise.all([
       Product.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select("title price regularPrice imageUrl description createdAt") // return only needed fields
-        .lean(), // faster read
+        .select("title price regularPrice imageUrl description createdAt")
+        .lean(),
       Product.countDocuments(filter),
     ]);
 
@@ -243,6 +258,7 @@ export async function getAllProducts(req, res) {
       total,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
+      pagination: true,
     });
   } catch (error) {
     console.error("getAllProducts error:", error);
@@ -487,62 +503,61 @@ export async function deleteProduct(req, res){
 
 // Fetch products by seller ID
 export async function getSellerProducts(req, res) {
-    try {
+  try {
+    const { userId, page, limit, search = "" } = req.query;
 
-        const { userId, page = 1, limit = 10, search = "" } = req.query;
+    if (!userId) {
+      return res.status(400).json({ error: 'Seller user ID is required' });
+    }
 
-        
-        //console.log("userId:",userId) 
-        if (!userId) {
-            return res.status(400).json({ error: 'Seller user ID is required' });
-        }
-        
-        const seller = await  Seller.findOne({userId}).select('activityStatus');
-        //console.log("text1") 
-        if(!seller){
-            return res.status(404).json({ message: "Seller with that userId not found" });
-        }
+    const seller = await Seller.findOne({ userId }).select('activityStatus');
+    if (!seller) return res.status(404).json({ message: "Seller not found" });
+    if (seller.activityStatus === "Banned")
+      return res.status(403).json({ error: 'This seller account is banned' });
 
-        if (seller?.activityStatus === "Banned") {
-            return res.status(403).json({ error: 'This seller account is banned' });
-        }
-        //console.log("text2")
-        const sellerId = seller._id;
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sellerId = seller._id;
 
-        // Build query with search functionality
-        let query = { sellerId };
+    // Build query with optional search
+    let query = { sellerId };
+    if (search.trim() !== '') {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
 
-        if (search && search.trim() !== '') {
-            query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
-            ];
-        }
+    // If no page/limit → return all products (OLD APP)
+    if (!page || !limit) {
+      const products = await Product.find(query).sort({ createdAt: -1 }).lean();
+      return res.status(200).json({
+        products,
+        totalProducts: products.length,
+        pagination: false,
+      });
+    }
 
-        const products = await Product.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-        //console.log("text3")
-        const total = await Product.countDocuments(query);
+    // NEW APP → paginated
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [products, total] = await Promise.all([
+      Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      Product.countDocuments(query)
+    ]);
 
     res.status(200).json({
       products,
       page: parseInt(page),
       totalPages: Math.ceil(total / limit),
       totalProducts: total,
+      pagination: true,
     });
-        //console.log(products)
-    } catch (error) {
-            console.error('Seller products error:', error);
-            res.status(500).json({ 
-                error: 'Failed to fetch products',
-                ...(process.env.NODE_ENV === 'development' && { details: error.message })
-            });
-        }
-        
+
+  } catch (error) {
+    console.error('Seller products error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch products',
+      ...(process.env.NODE_ENV === 'development' && { details: error.message })
+    });
+  }
 };
 
 // Get total number of products for a specific user
