@@ -10,6 +10,14 @@ import streamifier from 'streamifier';
 import pLimit from 'p-limit';
 
 
+// Helper: check whether request included pagination params explicitly
+function hasPaginationParams(req) {
+  // require BOTH page and limit to be present in the query string
+  return Object.prototype.hasOwnProperty.call(req.query, 'page') &&
+         Object.prototype.hasOwnProperty.call(req.query, 'limit');
+}
+
+
 export async function createProduct(req, res) {
   console.log("in the uploading started");
 
@@ -223,46 +231,43 @@ export async function updateProduct(req, res) {
 // controllers/productController.js
 export async function getAllProducts(req, res) {
   try {
-    const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
-    const limit = req.query.limit ? Math.min(48, parseInt(req.query.limit)) : null;
+    const isPaginatedRequest = hasPaginationParams(req);
+    const page = isPaginatedRequest ? Math.max(1, parseInt(req.query.page) || 1) : null;
+    const limit = isPaginatedRequest ? Math.min(48, parseInt(req.query.limit) || 12) : null;
 
     const filter = { sellerStatus: { $ne: "Banned" } };
 
-    if (!page || !limit) {
-      // OLD APP → return full list
+    if (!isPaginatedRequest) {
+      // OLD APP → return FULL LIST as a plain array (same shape old clients expect)
       const products = await Product.find(filter)
         .sort({ createdAt: -1 })
-        .select("title price regularPrice imageUrl description createdAt")
-        .lean();
-      return res.status(200).json({
-        products,
-        total: products.length,
-        pagination: false,
-      });
+        .lean(); // do not .select() so old client gets all fields it expects
+
+      return res.status(200).json(products); // plain array response
     }
 
-    // NEW APP → paginated
+    // NEW APP → paginated response
     const skip = (page - 1) * limit;
+
     const [products, total] = await Promise.all([
       Product.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select("title price regularPrice imageUrl description createdAt")
+        .select("title price regularPrice imageUrl description createdAt") // for performance
         .lean(),
       Product.countDocuments(filter),
     ]);
 
-    res.status(200).json({
+    return res.status(200).json({
       products,
       total,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
-      pagination: true,
     });
   } catch (error) {
     console.error("getAllProducts error:", error);
-    res.status(500).json({ message: "Failed to get the products" });
+    return res.status(500).json({ message: "Failed to get the products" });
   }
 }
 
@@ -504,11 +509,8 @@ export async function deleteProduct(req, res){
 // Fetch products by seller ID
 export async function getSellerProducts(req, res) {
   try {
-    const { userId, page, limit, search = "" } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'Seller user ID is required' });
-    }
+    const { userId, search = "" } = req.query;
+    if (!userId) return res.status(400).json({ error: 'Seller user ID is required' });
 
     const seller = await Seller.findOne({ userId }).select('activityStatus');
     if (!seller) return res.status(404).json({ message: "Seller not found" });
@@ -516,6 +518,10 @@ export async function getSellerProducts(req, res) {
       return res.status(403).json({ error: 'This seller account is banned' });
 
     const sellerId = seller._id;
+    const isPaginatedRequest = hasPaginationParams(req);
+    const page = isPaginatedRequest ? Math.max(1, parseInt(req.query.page) || 1) : null;
+    const limit = isPaginatedRequest ? Math.max(1, parseInt(req.query.limit) || 10) : null;
+    const skip = isPaginatedRequest ? (page - 1) * limit : 0;
 
     // Build query with optional search
     let query = { sellerId };
@@ -526,34 +532,27 @@ export async function getSellerProducts(req, res) {
       ];
     }
 
-    // If no page/limit → return all products (OLD APP)
-    if (!page || !limit) {
+    if (!isPaginatedRequest) {
+      // OLD APP: return full array (same shape old versions expect)
       const products = await Product.find(query).sort({ createdAt: -1 }).lean();
-      return res.status(200).json({
-        products,
-        totalProducts: products.length,
-        pagination: false,
-      });
+      return res.status(200).json(products);
     }
 
-    // NEW APP → paginated
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // NEW APP: paginated
     const [products, total] = await Promise.all([
       Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       Product.countDocuments(query)
     ]);
 
-    res.status(200).json({
+    return res.status(200).json({
       products,
       page: parseInt(page),
       totalPages: Math.ceil(total / limit),
       totalProducts: total,
-      pagination: true,
     });
-
   } catch (error) {
     console.error('Seller products error:', error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       error: 'Failed to fetch products',
       ...(process.env.NODE_ENV === 'development' && { details: error.message })
     });
