@@ -79,45 +79,36 @@ app.options('*', cors());
 app.set('trust proxy', 1); // Required for secure cookies on Render
 app.use(cookieParser());
 
-
-app.use('/api/sameja/admin', adminRoutes)
-app.use('/api/products',authMiddleware,  productRouter)
-app.use('/api/users',  userRoutes)
-app.use('/api/feedback',authMiddleware,  feedbackRoutes)
-app.use("/api/orders", authMiddleware, orderRoutes);
-app.use("/api/notifications", authMiddleware, notificationRoutes);
-app.use('/api/sellers',authMiddleware, sellerRoutes)
-app.use('/api/reviews', authMiddleware,reviewsRoutes)
-app.use('/api/liked-products', authMiddleware, LikedProductsRoutes)
-app.use('/api/wishlist', authMiddleware, Wishlist)
+// We'll register routes after Redis/session is applied — helper function
+const registerRoutes = () => {
+// All routes that depend on session should be registered here
+app.use('/api/sameja/admin', adminRoutes);
+app.use('/api/products', authMiddleware, productRouter);
+app.use('/api/users', userRoutes);
+app.use('/api/feedback', authMiddleware, feedbackRoutes);
+app.use('/api/orders', authMiddleware, orderRoutes);
+app.use('/api/notifications', authMiddleware, notificationRoutes);
+app.use('/api/sellers', authMiddleware, sellerRoutes);
+app.use('/api/reviews', authMiddleware, reviewsRoutes);
+app.use('/api/liked-products', authMiddleware, LikedProductsRoutes);
+app.use('/api/wishlist', authMiddleware, Wishlist);
 
 
 app.get('/delete', (req, res) => {
-  res.sendFile(path.join(path.resolve(), 'delete.html'));
+res.sendFile(path.join(path.resolve(), 'delete.html'));
 });
 
-// Handle 404 errors
+
+// 404 handler — after routes
 app.use((req, res, next) => {
-  res.status(404).json({
-    status: 'error',
-    message: `Can't find ${req.originalUrl} on this server!`
-  });
+res.status(404).json({ status: 'error', message: `Can't find ${req.originalUrl} on this server!` });
 });
 
-// Global error handling middleware
+
+// Global error handler
 app.use(errorHandler);
+};
 
-// === Graceful Error Handling (DO NOT EXIT) ===
-process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION:', err);
-  // Let Render restart
-});
-
-
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
-  // Let Render restart
-});
 
 // === START SERVER ONLY AFTER DB + REDIS ===
 const startServer = async () => {
@@ -149,6 +140,8 @@ const startServer = async () => {
     // 3. Apply session *after* Redis is ready
     app.use(sessionConfig);
 
+    registerRoutes();
+
     // 4. Start server
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
@@ -161,6 +154,19 @@ const startServer = async () => {
 };
 
 startServer();
+
+
+// === Graceful Error Handling (DO NOT EXIT) ===
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+  // Let Render restart
+});
+
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+  // Let Render restart
+});
 
 
 

@@ -3,6 +3,7 @@ import bcryptjs from "bcryptjs";
 import Admin from '../models/Admin.js';
 import { redisClient } from "../config/redis.js";
 const { hash, compare } =bcryptjs;
+import dotenv from 'dotenv';
 
 export const signup = async (req, res) => {
     
@@ -28,7 +29,7 @@ export const signup = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-  //console.log("check1")
+  console.log("check1")
   try {
     const { name, password } = req.body;
 
@@ -75,11 +76,12 @@ export const logout = (req, res) => {
       console.error("Session destruction error:", err);
       return res.status(500).json({ message: 'Logout failed' });
     }  
+    const isProd = process.env.NODE_ENV === 'production';
     res.clearCookie('connect.id', { 
       path: '/',
       httpOnly: true,
-      sameSite:'none',
-      secure:'true',
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
      });
     //console.log("Session after destruction :", req.sessionID);
     res.json({ message: 'Logout successful' });
@@ -87,11 +89,6 @@ export const logout = (req, res) => {
 };
 
 export const checkAuth = (req, res) => {
-  if (true) {
-    res.json({ isAuthenticated: true, user: req.session.user });
-    //console.log("is authenticated", req.session.user)
-  } else {
-    res.json({ isAuthenticated: false });
-    //console.log("not authenticated")
-  }
+  const user = req.session?.user ?? null;
+  res.json({ isAuthenticated: !!user, user });
 };

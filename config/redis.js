@@ -3,31 +3,19 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 
-const REDIS_URL = process.env.REDIS_URL;
+// Support REDIS_URL for platforms like Render/Heroku or individual host/port
+const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`;
 
-if (!REDIS_URL) {
-  throw new Error("REDIS_URL is missing in environment");
-}
-
-export const redisClient = new Redis(REDIS_URL, {
+export const redisClient = new Redis(redisUrl, {
   maxRetriesPerRequest: 3,
-  reconnectOnError: (err) => {
-    const targetErrors = ['ECONNREFUSED', 'ETIMEDOUT'];
-    return targetErrors.some(e => err.message.includes(e));
-  },
+  connectTimeout: 10000,
 });
 
-redisClient.on('connect', () => {
-  console.log('Redis client connected');
-});
+redisClient.on('connect', () => console.log('Redis: connecting...'));
+redisClient.on('ready', () => console.log('Redis: ready'));
+redisClient.on('error', (err) => console.error('Redis error', err));
 
-redisClient.on('ready', () => {
-  console.log('Redis ready for commands');
-});
 
-redisClient.on('error', (err) => {
-  console.error('Redis error:', err.message);
-});
 
 redisClient.on('close', () => {
   console.log('Redis connection closed');
