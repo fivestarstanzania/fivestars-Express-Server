@@ -54,9 +54,11 @@ export const agreeToTerms = async (req, res) => {
     seller.activityStatus = "Active";
     await seller.save();
 
-    const user = await User.findById(userId);
-    user.role = "seller";
-    await user.save();
+    // 4. Update user → full seller
+    await User.findByIdAndUpdate(userId, {
+      role: "seller",
+      "sellerApplication.status": "approved",
+    });
     //console.log("all correct for new seller")
 
     res.status(200).json({ message: "Terms agreement confirmed. Seller account activated." });

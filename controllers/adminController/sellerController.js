@@ -482,8 +482,8 @@ if (existingSeller) {
 
     // 4. Update the user role and sellerApplication status
     await User.findByIdAndUpdate(application.userId, {
-      role: "seller",
-      "sellerApplication.status": "approved",
+      role: "pending-seller",
+      "sellerApplication.status": "pending",
       "sellerApplication.rejectionReason": "",
     });
 
