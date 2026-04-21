@@ -72,8 +72,6 @@ export const getProductById = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-
-    console.log(req.body);
     // Validate ID
     if (!id) {
       return res.status(400).json({

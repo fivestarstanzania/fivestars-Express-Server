@@ -81,7 +81,6 @@ export const createReview = async (req, res) => {
 
 // Retrieve all reviews for a product or seller
 export const getReviews = async (req, res) => {
-  //console.log("i was called")
   try {
     const { reviewType, id } = req.params;
     if (reviewType !== "Product" && reviewType !== "Seller") {

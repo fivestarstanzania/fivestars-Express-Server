@@ -17,6 +17,25 @@ function hasPaginationParams(req) {
          Object.prototype.hasOwnProperty.call(req.query, 'limit');
 }
 
+const getActiveNonBannedPipeline = () => [
+  {
+    $lookup: {
+      from: "sellers",          // MongoDB collection name for Seller model
+      localField: "sellerId",
+      foreignField: "_id",
+      as: "sellerInfo"
+    }
+  },
+  { $unwind: { path: "$sellerInfo", preserveNullAndEmptyArrays: false } },
+  {
+    $match: {
+      isActive: { $ne: false }, // treat missing isActive (old products) as active
+      "sellerInfo.activityStatus": { $ne: "Banned" }
+    }
+  }
+];
+
+
 
 export async function createProduct(req, res) {
   console.log("in the uploading started");
@@ -156,13 +175,12 @@ export async function createProduct(req, res) {
     console.log("the product created success");
     res.status(200).json({ message: "Product created successfully", newProduct });
   } catch (error) {
-    console.error("Error creating product: ", error, req.body);
+    console.error("Error creating product:", error);
     res.status(500).json({ message: "Failed to create the product", error: error.message });
   }
 }
-
 export async function updateProduct(req, res) {
-  console.log("in the updating started");
+    //console.log("in the updating started");
     try {
         const userId = req.user._id;
         const productId = req.params.productId;
@@ -176,10 +194,11 @@ export async function updateProduct(req, res) {
             wholesalePrice,
             supplierName,
             supplierContat,
-            returnPolicy
+            returnPolicy,
+            isActive
 
         } = req.body;
-        console.log("body:", req.body)
+        //console.log("body:", req.body)
 
         // 1. Verify product exists and belongs to seller
         const product = await Product.findOne({ _id: productId, userId });
@@ -198,7 +217,11 @@ export async function updateProduct(req, res) {
         if (supplierName !== undefined) updates.supplierName = supplierName.trim();
         if (supplierContat !== undefined) updates.supplierContat = supplierContat.trim();
         if (returnPolicy !== undefined) updates.returnPolicy = returnPolicy;
-       
+        if (isActive !== undefined) updates.isActive = isActive;      // boolean field
+
+
+
+
         // Add update timestamp
         updates.updatedAt = new Date();
 
@@ -227,184 +250,6 @@ export async function updateProduct(req, res) {
         });
     }
 }
-
-// controllers/productController.js
-export async function getAllProducts(req, res) {
-  try {
-    const isPaginatedRequest = hasPaginationParams(req);
-    const page = isPaginatedRequest ? Math.max(1, parseInt(req.query.page) || 1) : null;
-    const limit = isPaginatedRequest ? Math.min(48, parseInt(req.query.limit) || 12) : null;
-
-    const filter = { sellerStatus: { $ne: "Banned" } };
-
-    if (!isPaginatedRequest) {
-      // OLD APP → return FULL LIST as a plain array (same shape old clients expect)
-      const products = await Product.find(filter)
-        .sort({ createdAt: -1 })
-        .lean(); // do not .select() so old client gets all fields it expects
-
-      return res.status(200).json(products); // plain array response
-    }
-
-    // NEW APP → paginated response
-    const skip = (page - 1) * limit;
-
-    const [products, total] = await Promise.all([
-      Product.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select("title price regularPrice imageUrl description createdAt") // for performance
-        .lean(),
-      Product.countDocuments(filter),
-    ]);
-
-    return res.status(200).json({
-      products,
-      total,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-    });
-  } catch (error) {
-    console.error("getAllProducts error:", error);
-    return res.status(500).json({ message: "Failed to get the products" });
-  }
-}
-
-
-export async function getProduct(req, res) {
-
-    try {
-        // 1. Find product with populated seller
-        const product = await Product.findById(req.params.id)
-            .populate("sellerId", "activityStatus") // Only populate necessary fields
-            .lean(); // Convert to plain JS object for better performance
-
-        // 2. Validate product and seller status
-        if (!product) {
-            return res.status(404).json({ message: "Product not found" });
-        }
-        
-        if (product.sellerId?.activityStatus === "Banned") {
-            return res.status(403).json({ message: "This product is unavailable because the seller is banned" });
-        }
-
-        // 3. Get additional seller info
-        const seller = await Seller.findById(product.sellerId)
-            .select("businessName") // Only get the name field
-            .lean();
-
-        if (!seller) {
-            return res.status(404).json({ message: "Seller information not available" });
-        }
-
-
-
-        // Construct the final response
-        const responseData = {
-            product,
-            sellerName: seller.businessName
-        };
-
-        //console.log(product)
-        // Send the response
-        res.status(200).json(responseData);
-
-        
-    } catch (error) {
-        res.status(500).json("Failed to get all the product");
-    }
-}
-
-export async function searchProduct(req, res) {
-    try {
-        const searchTerm = req.params.key.trim(); // Trim whitespace from search term
-        //console.log("search term:", searchTerm)
-        if (!searchTerm || searchTerm.length < 1) {
-            return res.status(400).json({ 
-                message: "Search term must be at least 2 characters long" 
-            });
-        }
-
-        // Search products with text index and filter banned sellers in single query
-        const products = await Product.find({
-            $and: [
-                { title: { $regex: new RegExp(searchTerm, 'i') } },
-                { sellerStatus: { $ne: "Banned" } } // Filter by sellerStatus in Product
-            ]
-        })
-        .populate({
-            path: 'sellerId',
-            select: 'name activityStatus', // Only get necessary fields
-            match: { activityStatus: { $ne: "Banned" } } // Ensure populated sellers aren't banned
-        })
-        .lean(); // Convert to plain JS object
-
-       
-        // Remove products with no seller (e.g., seller was banned and not populated)
-        const validProducts = products.filter((p) => p.sellerId);
-
-         // ✅ Log the search
-        await SearchLog.create({
-            keyword: searchTerm,
-            resultsFound: validProducts.length,
-            userId: req.user?._id || null, // Capture if user is logged in
-        });
-        
-        if (validProducts.length === 0) {
-            return res.status(200).json({ 
-                products: [],
-                message: "No products found matching your search",
-                suggestions: ["Try different keywords", "Check your spelling"]
-            });
-        }
-
-        res.json(validProducts);
-
-    } catch (error) {
-        console.error("Search error:", error);
-        res.status(500).json({ 
-            message: "An error occurred during search",
-            ...(process.env.NODE_ENV === 'development' && { 
-                error: error.message 
-            })
-        });
-    }
-}
-
-
-export async function getCategoryProduct(req,res) {
-    try {
-        const { category } = req.query;
-        
-        if (!category) {
-            return res.status(400).json({ error: "Category parameter is required" });
-        }
-
-        const products = await Product.find({ 
-            category,
-            'sellerId.activityStatus': { $ne: "Banned" } 
-        })
-        .populate({
-            path: 'sellerId',
-            select: 'name activityStatus',
-            match: { activityStatus: { $ne: "Banned" } }
-        })
-        .sort({ createdAt: -1 })
-        .lean();
-
-        const validProducts = products.filter(product => product.sellerId);
-
-        res.json(validProducts);
-    } catch (error) {
-        console.error("Category product error:", error);
-        res.status(500).json({ 
-            error: "Failed to fetch products",
-            ...(process.env.NODE_ENV === 'development' && { details: error.message })
-        });
-    }
-}
-
 // Edit a product
 export async function editProduct(req, res) {
     try {
@@ -444,8 +289,6 @@ export async function editProduct(req, res) {
         });
     }
 }
-
-
 // Delete a product
 export async function deleteProduct(req, res){
     try {
@@ -504,60 +347,595 @@ export async function deleteProduct(req, res){
         });
     }
 };
+export async function createLogClickedProducts(req, res) {
+    try {
+    const { productId, productTitle, userId, source } = req.body;
+
+    if (!productId || !productTitle) {
+      return res.status(400).json({ message: "Missing product info" });
+    }
+
+    await ProductClickLog.create({
+      productId,
+      productTitle,
+      userId: userId || null,
+      source: source || "other",
+    });
+
+    // Optional: increase product click count
+    await Product.findByIdAndUpdate(productId, { $inc: { clickCount: 1 } });
+
+    res.status(201).json({ message: "Click logged successfully" });
+  } catch (error) {
+    console.error("Error logging product click:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+
+
+
+
+
+// controllers/productController.js
+export async function getAllProducts(req, res) {
+  try {
+    const isPaginatedRequest = hasPaginationParams(req);
+    const page = isPaginatedRequest ? Math.max(1, parseInt(req.query.page) || 1) : null;
+    const limit = isPaginatedRequest ? Math.min(48, parseInt(req.query.limit) || 12) : null;
+    const pipeline = [
+      ...getActiveNonBannedPipeline(),
+      { $sort: { createdAt: -1 } }
+    ];
+
+
+    
+    if (!isPaginatedRequest) {
+      // OLD APP → return FULL LIST as a plain array (same shape old clients expect)
+      const products = await Product.aggregate(pipeline);
+      return res.status(200).json(products); // plain array response
+    }
+
+    // NEW APP → paginated response
+    const skip = (page - 1) * limit;
+    const [products, totalResult] = await Promise.all([
+      Product.aggregate([
+        ...pipeline,
+        { $skip: skip },
+        { $limit: limit },
+        { $project: { title: 1, price: 1, regularPrice: 1, imageUrl: 1, description: 1, createdAt: 1 } }
+      ]),
+      Product.aggregate([...getActiveNonBannedPipeline(), { $count: "total" }])
+    ]);
+
+    const total = totalResult[0]?.total || 0;
+
+    return res.status(200).json({
+      products,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+    });
+  } catch (error) {
+    console.error("getAllProducts error:", error);
+    return res.status(500).json({ message: "Failed to get the products" });
+  }
+}
+
+export async function getProduct(req, res) {
+
+    try {
+        // 1. Find product with populated seller
+        const product = await Product.findById(req.params.id)
+            .populate({
+              path: "sellerId",
+              match: { activityStatus: { $ne: "Banned" } }, // Only populate if seller is not banned
+              select: "activityStatus businessName" // Only get necessary fields
+            })
+            .lean(); // Convert to plain JS object for better performance
+
+        // 2. Validate product and seller status
+        if (!product || !product.sellerId || product.isActive === false) {
+          return res.status(404).json({ message: "Product not found" });
+        }
+        
+        if (product.sellerId?.activityStatus === "Banned") {
+            return res.status(403).json({ message: "This product is unavailable because the seller is banned" });
+        }
+
+        // 3. Get additional seller info
+        const seller = await Seller.findById(product.sellerId._id)
+            .select("businessName") // Only get the name field
+            .lean();
+
+        if (!seller) {
+            return res.status(404).json({ message: "Seller information not available" });
+        }
+
+
+
+        // Construct the final response
+        const responseData = {
+            product,
+            sellerName: seller?.businessName
+        };
+
+        //console.log(product)
+        // Send the response
+        res.status(200).json(responseData);
+
+        
+    } catch (error) {
+        res.status(500).json("Failed to get all the product");
+    }
+}
+
+export async function searchProduct(req, res) {
+  try {
+    const searchTerm = req.params.key.trim();
+    if (!searchTerm || searchTerm.length < 1) {
+      return res.status(400).json({ message: "Search term too short" });
+    }
+
+    const { minPrice, maxPrice, category, sort = "recent" } = req.query;
+
+    // Build match conditions after $lookup
+    const matchConditions = {
+      isActive: true,
+      "sellerInfo.activityStatus": { $ne: "Banned" },
+      title: { $regex: new RegExp(searchTerm, 'i') }
+    };
+    if (minPrice || maxPrice) {
+      matchConditions.price = {};
+      if (minPrice) matchConditions.price.$gte = Number(minPrice);
+      if (maxPrice) matchConditions.price.$lte = Number(maxPrice);
+    }
+    if (category && category !== "all") {
+      matchConditions.category = category;
+    }
+
+    // Build sort
+    let sortOption = {};
+    switch (sort) {
+      case "price_asc": sortOption = { price: 1 }; break;
+      case "price_desc": sortOption = { price: -1 }; break;
+      case "popular": sortOption = { clickCount: -1 }; break;
+      case "discount_desc": sortOption = { discountPercentage: -1 }; break;
+      default: sortOption = { createdAt: -1 }; // recent
+    }
+
+    const pipeline = [
+      ...getActiveNonBannedPipeline(),
+      { $match: matchConditions },
+      { $sort: sortOption },
+    ];
+
+    const products = await Product.aggregate(pipeline);
+    await SearchLog.create({ keyword: searchTerm, resultsFound: products.length, userId: req.user?._id });
+
+    res.json(products);
+  } catch (error) {
+    console.error("Search error:", error);
+    res.status(500).json({ message: "Search failed" });
+  }
+}
+
+export async function getCategoryProduct(req, res) {
+  try {
+    const { category, search = "", minPrice, maxPrice, sort = "recent" } = req.query;
+    if (!category) return res.status(400).json({ error: "Category required" });
+
+    const matchConditions = {
+      isActive: true,
+      "sellerInfo.activityStatus": { $ne: "Banned" },
+      category
+    };
+    if (search.trim()) {
+      matchConditions.title = { $regex: new RegExp(search, 'i') };
+    }
+    if (minPrice || maxPrice) {
+      matchConditions.price = {};
+      if (minPrice) matchConditions.price.$gte = Number(minPrice);
+      if (maxPrice) matchConditions.price.$lte = Number(maxPrice);
+    }
+
+    let sortOption = {};
+    switch (sort) {
+      case "price_asc": sortOption = { price: 1 }; break;
+      case "price_desc": sortOption = { price: -1 }; break;
+      case "popular": sortOption = { clickCount: -1 }; break;
+      case "discount_desc": sortOption = { discountPercentage: -1 }; break;
+      default: sortOption = { createdAt: -1 };
+    }
+
+
+    const pipeline = [
+      ...getActiveNonBannedPipeline(),
+      { $match: matchConditions },
+      { $sort: sortOption },
+    ];
+    
+    const products = await Product.aggregate(pipeline);
+    res.json(products);
+  } catch (error) {
+    console.error("Category product error:", error);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+}
+
+// Get all discounted products (full list)
+export const getDiscountedProducts = async (req, res) => {
+  try {
+    const {
+      limit = 20,
+      page = 1,
+      sortBy = "discount", // 'discount' or 'recent'
+      category,
+    } = req.query;
+
+    const perPage = parseInt(limit);
+    const currentPage = parseInt(page);
+    const skip = (currentPage - 1) * perPage;
+
+    //start with base pipeline to filter active, non-banned sellers
+    const basePipeline = getActiveNonBannedPipeline();
+
+    //add discount calculation and filtering stages
+    const discountPipeline = [
+      ...basePipeline,
+      {
+        $addFields: {
+          regularPriceNum: {$toDouble: "$regularPrice"},
+          priceNum: {$toDouble: "$price"}
+        }
+      },
+        {
+        $match: {
+          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
+        }
+      },
+      {
+        $addFields: {
+          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
+          discountPercentage: {
+            $round: [
+              {
+                $multiply: [
+                  {
+                    $divide: [
+                      { $subtract: ["$regularPriceNum", "$priceNum"] },
+                      "$regularPriceNum",
+                    ]
+                  },
+                  100
+                ]
+              },
+              0
+            ]
+          }
+        }
+      }
+    ];
+
+    if (category && category !== "all") {
+      discountPipeline.push({ $match: { category } });
+    }
+
+    //sorting
+    discountPipeline.push(
+      sortBy === "recent"
+        ? { $sort: { createdAt: -1 } }
+        : { $sort: { discountPercentage: -1, createdAt: -1 } }
+    );
+
+    //pagination
+    discountPipeline.push({ $skip: skip }, { $limit: perPage });
+
+    //project final fields
+    discountPipeline.push({
+      $project: {
+        _id: 1,
+        title: 1,
+        imageUrl: 1,
+        imageUrls: 1,
+        price: "$priceNum",
+        regularPrice: "$regularPriceNum",
+        discountAmount: 1,
+        discountPercentage: 1,
+        category: 1,
+        description: 1,
+        createdAt: 1,
+      },
+    });
+
+    const discountedProducts = await Product.aggregate(discountPipeline);
+
+    // For total count, we can run a simpler pipeline without pagination
+    const countPipeline = [
+      ...basePipeline.slice(0, -3), // remove the last 3 stages $skip, $limit, $project
+      { $count: "total" }
+    ];
+    const totalResult = await Product.aggregate(countPipeline);
+    const total = totalResult[0]?.total || 0;
+    
+    return res.status(200).json({
+      success: true,
+      data: discountedProducts,
+      pagination: {
+        currentPage,
+        totalPages: Math.ceil(total / perPage),
+        totalProducts: total,
+        hasMore: skip + perPage < total,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching discounted products:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch discounted products",
+      ...(process.env.NODE_ENV === "development" && { details: error.message }),
+    });
+  }
+};
+
+// Get all discounted products (home screen - limited)
+export const getLimitedDiscountedProducts = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 6;
+
+    const pipeline = [
+      ...getActiveNonBannedPipeline(),
+      {
+        $addFields: {
+          regularPriceNum: { $toDouble: "$regularPrice" },
+          priceNum: { $toDouble: "$price" }
+        }
+      },
+      {
+        $match: {
+          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
+        }
+      },
+      {
+        $addFields: {
+          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
+          discountPercentage: {
+            $round: [
+              {
+                $multiply: [
+                  { $divide: [{ $subtract: ["$regularPriceNum", "$priceNum"] }, "$regularPriceNum"] },
+                  100
+                ]
+              },
+              0
+            ]
+          }
+        }
+      },
+      { $sort: { discountPercentage: -1, createdAt: -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          imageUrl: 1,
+          imageUrls: 1,
+          price: "$priceNum",
+          regularPrice: "$regularPriceNum",
+          discountAmount: 1,
+          discountPercentage: 1,
+          category: 1,
+          description: 1,
+          createdAt: 1,
+          clickCount: 1
+        }
+      }
+    ];
+
+    const discountedProducts = await Product.aggregate(pipeline);
+    res.status(200).json({ success: true, data: discountedProducts });
+  } catch (error) {
+    console.error("Error fetching limited discounted products:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch limited discounted products" });
+  }
+};
+
+// Get latest products from last 30 days (paginated)
+export const getLatestProducts = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const pipeline = [
+      ...getActiveNonBannedPipeline(),
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const [products, totalResult] = await Promise.all([
+      Product.aggregate(pipeline),
+      Product.aggregate([
+        ...getActiveNonBannedPipeline(),
+        { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+        { $count: "total" }
+      ])
+    ]);
+
+    const total = totalResult[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      data: products,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalProducts: total,
+        hasMore: skip + limit < total
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching latest products:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch latest products" });
+  }
+};
+
+// controllers/productController.js
+export async function getAllProductIds(req, res) {
+  try {
+    const products = await Product.aggregate([
+      ...getActiveNonBannedPipeline(),
+      { $project: { _id: 1, createdAt: 1 } }
+    ]);
+
+    res.status(200).json({ ids: products.map(p => p._id) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch product IDs" });
+  }
+}
+
+// controllers/productController.js
+export async function getProductsByIds(req, res) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "ids array required" });
+    }
+
+    const products = await Product.find({ _id: { $in: ids }, isActive: true })
+      .populate({
+        path: 'sellerId',
+        match: { activityStatus: { $ne: 'Banned' } }
+      })
+      .lean();
+
+    const filteredProducts = products.filter(product => product.sellerId);
+    const productMap = new Map(filteredProducts.map(p => [p._id.toString(), p]));
+    const ordered = ids.map(id => productMap.get(id.toString())).filter(Boolean);
+
+    res.status(200).json({ products: ordered });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch products by IDs" });
+  }
+}
+
 
 
 // Fetch products by seller ID
 export async function getSellerProducts(req, res) {
   try {
-    const { userId, search = "" } = req.query;
-    if (!userId) return res.status(400).json({ error: 'Seller user ID is required' });
+    const { userId, search = "", status, category, sort = "newest", page, limit } = req.query;
+    if (!userId) return res.status(400).json({ error: 'Seller user ID required' });
 
     const seller = await Seller.findOne({ userId }).select('activityStatus');
     if (!seller) return res.status(404).json({ message: "Seller not found" });
-    if (seller.activityStatus === "Banned")
-      return res.status(403).json({ error: 'This seller account is banned' });
+    if (seller.activityStatus === "Banned") return res.status(403).json({ error: 'Seller banned' });
 
     const sellerId = seller._id;
-    const isPaginatedRequest = hasPaginationParams(req);
-    const page = isPaginatedRequest ? Math.max(1, parseInt(req.query.page) || 1) : null;
-    const limit = isPaginatedRequest ? Math.max(1, parseInt(req.query.limit) || 10) : null;
-    const skip = isPaginatedRequest ? (page - 1) * limit : 0;
+    let matchStage = { sellerId };
 
-    // Build query with optional search
-    let query = { sellerId };
-    if (search.trim() !== '') {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
+    if (search.trim()) {
+      matchStage.title = { $regex: search, $options: 'i' };
+    }
+    if (status && status !== "all") {
+      matchStage.isActive = status === "active";
+    }
+    if (category && category !== "all") {
+      matchStage.category = category;
     }
 
-    if (!isPaginatedRequest) {
-      // OLD APP: return full array (same shape old versions expect)
-      const products = await Product.find(query).sort({ createdAt: -1 }).lean();
-      return res.status(200).json(products);
+    // Aggregation pipeline to add discountPercentage field
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $addFields: {
+          discountPercentage: {
+            $cond: {
+              if: {
+                $and: [
+                  { $gt: ["$regularPrice", 0] },
+                  { $gt: ["$price", 0] },
+                  { $gt: ["$regularPrice", "$price"] }
+                ]
+              },
+              then: {
+                $round: [
+                  {
+                    $multiply: [
+                      { $divide: [{ $subtract: ["$regularPrice", "$price"] }, "$regularPrice"] },
+                      100
+                    ]
+                  },
+                  0
+                ]
+              },
+              else: 0
+            }
+          }
+        }
+      }
+    ];
+
+    // Sorting
+    let sortStage = {};
+    switch (sort) {
+      case "mostViewed":
+        sortStage = { clickCount: -1, _id: -1 };
+        break;
+      case "discount_desc":
+        sortStage = { discountPercentage: -1, _id: -1 };
+        break;
+      case "oldest":
+        sortStage = { createdAt: 1, _id: 1 };
+        break;
+      default: // "newest"
+        sortStage = { createdAt: -1, _id: -1 };
+    }
+    pipeline.push({ $sort: sortStage });
+
+    // Pagination
+    const isPaginated = page && limit;
+    if (!isPaginated) {
+      const products = await Product.aggregate(pipeline);
+      return res.json(products);
     }
 
-    // NEW APP: paginated
-    const [products, total] = await Promise.all([
-      Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
-      Product.countDocuments(query)
-    ]);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
-    return res.status(200).json({
+    const facetPipeline = [
+      ...pipeline,
+      {
+        $facet: {
+          products: [{ $skip: skip }, { $limit: limitNum }],
+          totalCount: [{ $count: "count" }]
+        }
+      }
+    ];
+
+    const result = await Product.aggregate(facetPipeline);
+    const products = result[0]?.products || [];
+    const total = result[0]?.totalCount[0]?.count || 0;
+
+    res.json({
       products,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
       totalProducts: total,
     });
   } catch (error) {
     console.error('Seller products error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to fetch products',
-      ...(process.env.NODE_ENV === 'development' && { details: error.message })
-    });
+    res.status(500).json({ error: 'Failed to fetch products' });
   }
-};
+}
 
 // Get total number of products for a specific user
 export async function getUserProductCount(req, res) {
@@ -597,238 +975,6 @@ export async function getUserProductCount(req, res) {
     }
 }
 
-export async function createLogClickedProducts(req, res) {
-    try {
-    const { productId, productTitle, userId, source } = req.body;
-
-    if (!productId || !productTitle) {
-      return res.status(400).json({ message: "Missing product info" });
-    }
-
-    await ProductClickLog.create({
-      productId,
-      productTitle,
-      userId: userId || null,
-      source: source || "other",
-    });
-
-    // Optional: increase product click count
-    await Product.findByIdAndUpdate(productId, { $inc: { clickCount: 1 } });
-
-    res.status(201).json({ message: "Click logged successfully" });
-  } catch (error) {
-    console.error("Error logging product click:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-}
-
-// Get all discounted products (full list)
-// Get all discounted products (full list)
-export const getDiscountedProducts = async (req, res) => {
-  try {
-    const {
-      limit = 20,
-      page = 1,
-      sortBy = "discount", // 'discount' or 'recent'
-      category,
-    } = req.query;
-
-    const perPage = parseInt(limit);
-    const currentPage = parseInt(page);
-    const skip = (currentPage - 1) * perPage;
-
-    const matchQuery = {
-      regularPrice: { $exists: true, $ne: null },
-      price: { $exists: true, $ne: null },
-      sellerStatus: "Active",
-    };
-
-    if (category && category !== "all") {
-      matchQuery.category = category;
-    }
-
-    const pipeline = [
-      { $match: matchQuery },
-
-      // Convert prices safely
-      {
-        $addFields: {
-          regularPriceNum: {
-            $cond: [
-              { $not: ["$regularPrice"] },
-              0,
-              { $toDouble: "$regularPrice" }
-            ]
-          },
-          priceNum: {
-            $cond: [
-              { $not: ["$price"] },
-              0,
-              { $toDouble: "$price" }
-            ]
-          }
-        }
-      },
-
-      // Only discounted items
-      {
-        $match: {
-          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
-        }
-      },
-
-      // Compute discount
-      {
-        $addFields: {
-          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
-          discountPercentage: {
-            $round: [
-              {
-                $multiply: [
-                  {
-                    $divide: [
-                      { $subtract: ["$regularPriceNum", "$priceNum"] },
-                      "$regularPriceNum",
-                    ]
-                  },
-                  100
-                ]
-              },
-              0
-            ]
-          }
-        }
-      }
-    ];
-
-    // Sorting
-    pipeline.push(
-      sortBy === "recent"
-        ? { $sort: { createdAt: -1 } }
-        : { $sort: { discountPercentage: -1, createdAt: -1 } }
-    );
-
-    // Pagination
-    pipeline.push({ $skip: skip }, { $limit: perPage });
-
-    // Project final fields
-    pipeline.push({
-      $project: {
-        _id: 1,
-        title: 1,
-        imageUrl: 1,
-        imageUrls: 1,
-        price: "$priceNum",
-        regularPrice: "$regularPriceNum",
-        discountAmount: 1,
-        discountPercentage: 1,
-        category: 1,
-        description: 1,
-        createdAt: 1,
-      },
-    });
-
-    const discountedProducts = await Product.aggregate(pipeline);
-    const totalProducts = await Product.countDocuments(matchQuery);
-
-    return res.status(200).json({
-      success: true,
-      data: discountedProducts,
-      pagination: {
-        currentPage,
-        totalPages: Math.ceil(totalProducts / perPage),
-        totalProducts,
-        hasMore: skip + perPage < totalProducts,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching discounted products:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch discounted products",
-    });
-  }
-};
 
 
-// Get all discounted products (for home screen - limited)
-// Get all discounted products (home screen - limited)
-export const getLimitedDiscountedProducts = async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 6;
-
-    const discountedProducts = await Product.aggregate([
-      {
-        $match: {
-          regularPrice: { $exists: true, $ne: null },
-          price: { $exists: true, $ne: null },
-          sellerStatus: "Active"
-        }
-      },
-      {
-        // Convert price fields to numbers ALWAYS
-        $addFields: {
-          regularPriceNum: { $toDouble: "$regularPrice" },
-          priceNum: { $toDouble: "$price" }
-        }
-      },
-      {
-        // Only keep products where regularPrice > price
-        $match: {
-          $expr: { $gt: ["$regularPriceNum", "$priceNum"] }
-        }
-      },
-      {
-        $addFields: {
-          discountAmount: { $subtract: ["$regularPriceNum", "$priceNum"] },
-          discountPercentage: {
-            $round: [
-              {
-                $multiply: [
-                  { $divide: [{ $subtract: ["$regularPriceNum", "$priceNum"] }, "$regularPriceNum"] },
-                  100
-                ]
-              },
-              0
-            ]
-          }
-        }
-      },
-      {
-        $sort: {
-          discountPercentage: -1,
-          createdAt: -1
-        }
-      },
-      { $limit: limit },
-      {
-        $project: {
-          _id: 1,
-          title: 1,
-          imageUrl: 1,
-          imageUrls: 1,
-          price: "$priceNum",
-          regularPrice: "$regularPriceNum",
-          discountAmount: 1,
-          discountPercentage: 1,
-          category: 1,
-          description: 1,
-          createdAt: 1,
-          clickCount: 1
-        }
-      }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: discountedProducts
-    });
-  } catch (error) {
-    console.error("Error fetching limited discounted products:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch limited discounted products"
-    });
-  }
-};
 

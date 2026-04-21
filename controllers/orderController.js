@@ -12,7 +12,7 @@ export async function createOrder(req, res) {
   const buyerId = req.user._id;
   //console.log("check1")
   try {
-    const { buyer, sellerUserId, status, productId } = req.body;
+    const { buyer, sellerUserId, productId,quantity = 1, size, totalPrice, selectedImageUrl } = req.body;
 
     if (!buyer || !buyer.name || !buyer.contact || !buyer.address) {
       //console.log("Buyer details are incomplete")
@@ -50,6 +50,9 @@ export async function createOrder(req, res) {
     const randomValue = Math.floor(Math.random() * 10000);
     const orderNumber = `ORD-${timestamp}-${randomValue}`;
 
+    const unitPrice = productDetails.discountedPrice || productDetails.price;
+    const finalTotal = totalPrice || (unitPrice * quantity);
+
     // Create a new order
     const newOrder = new Order({
       orderNumber,
@@ -64,11 +67,15 @@ export async function createOrder(req, res) {
         name: sellerDetails.name, 
         phone: sellerInfos.phone,
       },
-      status,
+      status:"Pending",
       product: {
         id:productId,
         productImage: productDetails.imageUrl, 
-        productPrice: productDetails.price, 
+        selectedImageUrl: selectedImageUrl || productDetails.imageUrl, // chosen image
+        productPrice: unitPrice,
+        quantity: quantity,
+        size: size,
+        totalPrice: finalTotal,
         
       },
     });
@@ -140,9 +147,12 @@ export async function getAllOrders(req, res) {
   const receiverId = req.user._id;
   try {
     // Retrieve all orders where the buyer's ID matches the receiverId
-    const orders = await Order.find({ "buyer.id": receiverId }).sort({createdAt:-1});
+    const orders = await Order.find({ "buyer.id": receiverId })
+    .populate("product.id", "title")
+    .sort({createdAt:-1});
     const formattedOrders = orders.map((order) => ({
       ...order._doc,
+      productTitle: order.product.id?.title,
       createdAt: new Date(order.createdAt).toLocaleString(), // Format the date
     }));
     res.status(200).json({ message: "Orders retrieved successfully", orders: formattedOrders });
@@ -156,11 +166,14 @@ export async function getSellerOrders(req, res) {
   const receiverId = req.user._id; // The ID of the logged-in user
   try {
     // Retrieve all orders where the seller's ID matches the receiverId
-    const orders = await Order.find({ "seller.id": receiverId }).sort({createdAt:-1});
+    const orders = await Order.find({ "seller.id": receiverId })
+    .populate("product.id", "title")
+    .sort({createdAt:-1});
     
     // Format createdAt for each order
     const formattedOrders = orders.map((order) => ({
       ...order._doc,
+      productTitle: order.product.id?.title,
       createdAt: new Date(order.createdAt).toLocaleString(), // Format the date
     }));
     res.status(200).json({ message: "Orders retrieved successfully", orders: formattedOrders });
@@ -188,26 +201,35 @@ export async function getOrderDetails(req, res) {
     }
 
     // Combine product details
-    const orderWithProductTitle = {
+    const orderResponse = {
       ...order._doc,
       product: {
-        ...order.product,
-        title: order.product?.id?.title || "Unknown product",
+        ...order.product, // ✅ FIX HERE
+        productTitle: order.product?.id?.title || "Product not available",
+        productDescription: order.product?.id?.description,
+        productOriginalImage: order.product?.id?.imageUrl,
+        productAllImages: order.product?.id?.imageUrls,
+
+        displayImage:
+          order.product?.selectedImageUrl ||
+          order.product?.productImage ||
+          order.product?.id?.imageUrl,
+
+        // ── backward-compat aliases for old app versions ──
+        title: order.product?.id?.title || "Product not available",
         name: order.product?.id?.name,
         fullImage: order.product?.id?.imageUrl,
         images: order.product?.id?.imageUrls,
       },
-    };
-
-
+    }
     res.status(200).json({
       message: "Order details retrieved successfully",
-      order: orderWithProductTitle,
+      order: orderResponse,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to retrieve order details" });
-  }
+  }  
 }
 
 export async function  getRecentOrders(req, res){
@@ -233,6 +255,16 @@ export async function updateOrderStatus(req, res) {
     const oldOrder = await Order.findById(orderId);
     if (!oldOrder) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // --- Increment soldCount if transitioning to Delivered ---
+    if (oldOrder.status !== "Delivered" && status === "Delivered") {
+      const productId = oldOrder.product?.id || oldOrder.product; // adjust based on your schema
+      const orderedQuantity = oldOrder.product?.quantity || 1;
+
+      await Product.findByIdAndUpdate(productId, {
+        $inc: { soldCount: orderedQuantity }
+      });
     }
 
     

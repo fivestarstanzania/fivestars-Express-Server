@@ -43,7 +43,7 @@ export const recordVisit = async (req, res) => {
 
     return res.status(200).json({ message: "Visit recorded" });
   } catch (err) {
-    console.log("Visit error:", err);
+    console.error("Visit error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

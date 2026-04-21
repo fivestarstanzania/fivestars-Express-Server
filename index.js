@@ -1,3 +1,7 @@
+
+//import dns from 'node:dns';
+//dns.setServers(['1.1.1.1', '8.8.8.8']);
+
 import  { json, urlencoded } from 'express';
 import cors from 'cors';
 import productRouter from './routes/productRoutes.js';
@@ -20,8 +24,12 @@ import { redisClient } from './config/redis.js';
 import cookieParser from "cookie-parser"
 import path from 'path'
 import { errorHandler } from './utils/errorHandler.js';
+import { sanitizeRequestInput } from './middleware/requestSanitizer.js';
+import { generalApiRateLimiter, securityHeaders } from './middleware/securityMiddleware.js';
+import { suppressNonCriticalConsoleInProduction } from './utils/logger.js';
 
 dotenv.config();
+suppressNonCriticalConsoleInProduction();
 
 const PORT=process.env.PORT||10000 ;
 
@@ -50,15 +58,17 @@ app.get('/privacy-policy', (req, res) => {
 });
 
 //Middlewares
+app.disable('x-powered-by');
+app.use(securityHeaders);
 app.use(json({limit:'50mb'}));
 app.use(urlencoded({limit:'50mb', extended:true}))
+app.use(sanitizeRequestInput);
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log('Blocked origin:', origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -72,12 +82,14 @@ app.use(cors({
   ],
   exposedHeaders: ["set-cookie", "Content-Disposition"],
   maxAge: 86400
-  
-}));
-app.options('*', cors());
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.set('trust proxy', 1); // Required for secure cookies on Render
 app.use(cookieParser());
+app.use('/api', generalApiRateLimiter);
 
 // We'll register routes after Redis/session is applied — helper function
 const registerRoutes = () => {

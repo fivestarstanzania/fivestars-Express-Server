@@ -48,19 +48,32 @@ const orderSchema = new Schema(
       
     },
     product: {
-      productImage: {
-        type: String,
-        required: true,
+      productImage: { 
+        type: String, 
+        required: true 
       },
-      productPrice: {
-        type: Number,
-        required: true,
-      },
+      selectedImageUrl: { 
+        type: String 
+      }, // optional field for the chosen image
+      productPrice: { 
+        type: Number, 
+        required: true 
+      }, // unit price
       id: { 
         type: Schema.Types.ObjectId, 
         ref: 'Product', 
         required: true 
       },
+      // NEW FIELDS:
+      quantity: { 
+        type: Number, 
+        required: true, 
+        default: 1 
+      },
+      size: { 
+        type: String 
+      },
+      totalPrice: { type: Number, required: true }, // unitPrice * quantity
     },
     review: {
       rating: {

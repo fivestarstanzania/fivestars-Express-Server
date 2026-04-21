@@ -20,8 +20,6 @@ dotenv.config();
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(CLIENT_ID);
 export const registerGoogleUsers = async (req, res) => {
-  console.log("Google login called");
-
   try {
       // ===== Check CLIENT_ID is configured =====
       if (!CLIENT_ID) {
@@ -150,8 +148,6 @@ export const registerGoogleUsers = async (req, res) => {
 
   } catch (error) {
       console.error("Unexpected login error:", error);
-      console.error("Error stack:", error.stack);
-      console.error("Request body:", JSON.stringify(req.body, null, 2));
 
       return res.status(500).json({
           success: false,

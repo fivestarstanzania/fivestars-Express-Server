@@ -9,9 +9,6 @@ const ProductSchema = new Schema(
     description: { type: String, required: true },
     title: { type: String, required: true },
     price: { type: Number, required: true },
-    discountedPrice: {
-      type: Number
-    },
     discountPercentage: {
       type: Number
     },
@@ -60,12 +57,20 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false
     },
+    isActive: {
+      type: Boolean,
+      default: true
+    },
     sellerStatus: {
       type: String,
       default: "Active", 
       required: true
     },
     clickCount: {
+      type: Number,
+      default: 0
+    },
+    soldCount: {
       type: Number,
       default: 0
     },
@@ -92,6 +97,14 @@ const ProductSchema = new Schema(
   },
   { timestamps: true }
 );
+ProductSchema.pre('save', function(next) {
+  if (this.regularPrice && this.price && this.regularPrice > this.price) {
+    this.discountPercentage = Math.round(((this.regularPrice - this.price) / this.regularPrice) * 100);
+  } else {
+    this.discountPercentage = 0;
+  }
+  next();
+});
 
 ProductSchema.index({description: 'text' });
 ProductSchema.index({title: 'text' });

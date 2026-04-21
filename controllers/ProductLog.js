@@ -12,7 +12,6 @@ const EXCLUDED_USER_IDS = [
 const EXCLUDED_OBJECT_IDS = EXCLUDED_USER_IDS.map(id => new mongoose.Types.ObjectId(id));
 
 // Log a product click
-
 export const logProductClick = async (req, res) => {
   try {
     const { productId, productTitle, source = "home" } = req.body;
@@ -54,15 +53,16 @@ export const logProductClick = async (req, res) => {
 // Get popular products in last 30 days
 export const getPopularProducts = async (req, res) => {
   try {
-    const { limit = 20, page = 1 } = req.query;
+    const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
-    // Calculate date 30 days ago 
+    // Calculate date 30 days ago
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Aggregate clicks in last 30 days excluding admin users
-    const popularProducts = await ProductClickLog.aggregate([
+    // Build one pipeline so filtering, pagination, and totals all use the same result set.
+    const [result] = await ProductClickLog.aggregate([
       {
         $match: {
           createdAt: { $gte: thirtyDaysAgo },
@@ -72,65 +72,90 @@ export const getPopularProducts = async (req, res) => {
       {
         $group: {
           _id: "$productId",
-          productTitle: { $first: "$productTitle" },
           clickCount: { $sum: 1 }
         }
       },
-      { $sort: { clickCount: -1 } },
-      { $skip: skip },
-      { $limit: parseInt(limit) }
-    ]);
-
-    // Get full product details for popular products
-    const productIds = popularProducts.map(p => p._id);
-    const products = await Product.find({ 
-      _id: { $in: productIds },
-      sellerStatus: "Active" // Only show active products
-    })
-    .populate('sellerId', 'name businessName profileImage')
-    .lean();
-
-    // Merge click count with product data
-    const productsWithClicks = products.map(product => {
-      const clickData = popularProducts.find(p => 
-        p._id.toString() === product._id.toString()
-      );
-      return {
-        ...product,
-        recentClickCount: clickData?.clickCount || 0
-      };
-    });
-
-    // Sort by click count (already sorted by aggregation, but ensure after merge)
-    productsWithClicks.sort((a, b) => b.recentClickCount - a.recentClickCount);
-
-    // Get total count for pagination
-    const totalClicks = await ProductClickLog.aggregate([
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: false } },
+      {
+        $lookup: {
+          from: "sellers",
+          localField: "product.sellerId",
+          foreignField: "_id",
+          as: "sellerInfo"
+        }
+      },
+      { $unwind: { path: "$sellerInfo", preserveNullAndEmptyArrays: false } },
       {
         $match: {
-          createdAt: { $gte: thirtyDaysAgo }
+          "product.isActive": { $ne: false }, // treat missing isActive (old products) as active
+          "sellerInfo.activityStatus": { $ne: "Banned" }
         }
       },
       {
-        $group: {
-          _id: "$productId"
+        $lookup: {
+          from: "users",
+          localField: "sellerInfo.userId",
+          foreignField: "_id",
+          as: "sellerUser"
         }
       },
+      { $unwind: { path: "$sellerUser", preserveNullAndEmptyArrays: true } },
+      { $sort: { clickCount: -1, _id: 1 } },
       {
-        $count: "total"
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                _id: "$product._id",
+                title: "$product.title",
+                price: "$product.price",
+                regularPrice: "$product.regularPrice",
+                imageUrl: "$product.imageUrl",
+                imageUrls: "$product.imageUrls",
+                description: "$product.description",
+                category: "$product.category",
+                createdAt: "$product.createdAt",
+                clickCount: "$product.clickCount",
+                recentClickCount: "$clickCount",
+                sellerInfo: {
+                  name: "$sellerInfo.name",
+                  businessName: "$sellerInfo.businessName",
+                  profileImage: "$sellerInfo.profileImage"
+                },
+                sellerUser: {
+                  name: "$sellerUser.name"
+                }
+              }
+            }
+          ],
+          totalCount: [
+            { $count: "total" }
+          ]
+        }
       }
     ]);
 
-    const total = totalClicks[0]?.total || 0;
+    const products = result?.data || [];
+    const total = result?.totalCount?.[0]?.total || 0;
 
     res.status(200).json({
       success: true,
-      data: productsWithClicks,
+      data: products,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalProducts: total,
-        hasMore: skip + productsWithClicks.length < total
+        hasMore: skip + products.length < total
       }
     });
   } catch (error) {
