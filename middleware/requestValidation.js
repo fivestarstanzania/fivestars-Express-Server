@@ -173,7 +173,7 @@ export const validateCreateOrderRequest = [
   body('buyer').isObject().withMessage('buyer is required'),
   body('buyer.name').exists({ checkFalsy: true }).withMessage('Buyer name is required').bail().isString().withMessage('Buyer name must be a string').bail().customSanitizer(cleanText).isLength({ min: 2, max: 120 }).withMessage('Buyer name is invalid'),
   body('buyer.contact').exists({ checkFalsy: true }).withMessage('Buyer contact is required').bail().isString().withMessage('Buyer contact must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 60 }).withMessage('Buyer contact is invalid'),
-  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 500 }).withMessage('Buyer address is invalid'),
+  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 3, max: 500 }).withMessage('Buyer address is invalid'),
   body('quantity').optional({ values: 'falsy' }).isInt({ min: 1, max: 100 }).withMessage('quantity must be between 1 and 100').toInt(),
   textField('size', 'size', { required: false, min: 1, max: 50 }),
   body('totalPrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('totalPrice must be a valid number').toFloat(),

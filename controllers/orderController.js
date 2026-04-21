@@ -29,9 +29,11 @@ export async function createOrder(req, res) {
       return res.status(400).json({ message: "Product ID is required" });
     }
     //console.log("check2")
-    const sellerDetails = await User.findById(sellerUserId);
-    const sellerInfos = await Seller.findOne({userId:sellerUserId})
-    
+    const [sellerDetails, sellerInfos] = await Promise.all([
+      User.findById(sellerUserId),
+      Seller.findOne({ userId: sellerUserId }),
+    ]);
+
     if (!sellerDetails) {
       return res.status(404).json({ message: "Seller not found" });
     }
@@ -50,7 +52,7 @@ export async function createOrder(req, res) {
     const randomValue = Math.floor(Math.random() * 10000);
     const orderNumber = `ORD-${timestamp}-${randomValue}`;
 
-    const unitPrice = productDetails.discountedPrice || productDetails.price;
+    const unitPrice = productDetails.price;
     const finalTotal = totalPrice || (unitPrice * quantity);
 
     // Create a new order
@@ -65,7 +67,7 @@ export async function createOrder(req, res) {
       seller:{
         id: sellerDetails._id, 
         name: sellerDetails.name, 
-        phone: sellerInfos.phone,
+        phone: sellerInfos?.phone || "",
       },
       status:"Pending",
       product: {
