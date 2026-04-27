@@ -470,6 +470,33 @@ export async function getProduct(req, res) {
     }
 }
 
+// Seller-specific: fetch own product by ID regardless of isActive status (for editing)
+export async function getSellerProductById(req, res) {
+    try {
+        const userId = req.user._id;
+
+        // Find the seller record for the authenticated user
+        const seller = await Seller.findOne({ userId }).select('_id activityStatus').lean();
+        if (!seller) {
+            return res.status(404).json({ message: "Seller not found" });
+        }
+        if (seller.activityStatus === "Banned") {
+            return res.status(403).json({ message: "Your seller account is banned" });
+        }
+
+        // Fetch the product; verify it belongs to this seller (no isActive filter)
+        const product = await Product.findOne({ _id: req.params.id, sellerId: seller._id }).lean();
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        res.status(200).json({ product });
+    } catch (error) {
+        console.error("getSellerProductById error:", error);
+        res.status(500).json({ message: "Failed to get product" });
+    }
+}
+
 export async function searchProduct(req, res) {
   try {
     const searchTerm = req.params.key.trim();

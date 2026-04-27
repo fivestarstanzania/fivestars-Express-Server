@@ -16,11 +16,13 @@ import {
     createProduct,
     getAllProductIds,
     getProductsByIds,
-    getLatestProducts, 
+    getLatestProducts,
+    getSellerProductById,
  } from '../controllers/productsController.js';
 import { getPopularProducts } from '../controllers/ProductLog.js';
 import { productMutationRateLimiter, reviewRateLimiter } from '../middleware/securityMiddleware.js';
 import { validateEditProductRequest, validateObjectIdParam, validateProductBatchRequest, validateProductClickRequest, validateProductCreateRequest, validateProductUpdateRequest } from '../middleware/requestValidation.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 
@@ -40,6 +42,7 @@ router.get('/ids', getAllProductIds);// MUST be above /:id
 
 // --- 2. DYNAMIC GET ROUTES (Pattern Matching) ---
 router.get('/search/:key', searchProduct);
+router.get('/seller/product/:id', authMiddleware, validateObjectIdParam('id', 'id'), getSellerProductById);
 router.get('/:id', getProduct);
 
 
