@@ -120,9 +120,22 @@ const objectIdBodyField = (field, label, required = true) => {
 export const handleValidationResults = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const fieldErrors = errors.array().map(({ path, msg }) => ({ field: path, message: msg }));
+
+    // --- Validation debug log ---
+    console.error('[VALIDATION FAILED]', req.method, req.originalUrl);
+    console.error('[VALIDATION ERRORS]', JSON.stringify(fieldErrors, null, 2));
+    console.error('[REQUEST BODY (non-file fields)]', JSON.stringify(req.body, null, 2));
+    if (req.files && Object.keys(req.files).length) {
+      console.error('[UPLOADED FILES]', Object.fromEntries(
+        Object.entries(req.files).map(([k, arr]) => [k, arr.map(f => f.originalname)])
+      ));
+    }
+    // --- end debug log ---
+
     return res.status(400).json({
       message: 'Validation failed',
-      errors: errors.array().map(({ path, msg }) => ({ field: path, message: msg })),
+      errors: fieldErrors,
     });
   }
 
