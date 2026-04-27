@@ -250,7 +250,7 @@ export async function  getRecentOrders(req, res){
 export async function updateOrderStatus(req, res) {
   const { orderId } = req.params;
   const { status } = req.body; 
-  //console.log(`finding order with id: ${orderId} and `, req.body )
+  console.error(`[updateOrderStatus] orderId=${orderId} status=${status} userId=${req.user?._id}`);
   
   try {
     // Find the order by ID
