@@ -164,8 +164,7 @@ export const validateProductCreateRequest = [
   textField('description', 'Description', { required: true, min: 5, max: 5000 }),
   textField('category', 'Category', { required: true, min: 2, max: 100 }),
   textField('subcategory', 'Subcategory', { required: false, min: 2, max: 100 }),
-  textField('supplierName', 'Supplier name', { required: false, min: 2, max: 150 }),
-  textField('supplierContat', 'Supplier contact', { required: false, min: 5, max: 100 }),
+  
   textField('returnPolicy', 'Return policy', { required: false, min: 2, max: 1000 }),
   body('price').exists({ checkFalsy: true }).withMessage('Price is required').bail().isFloat({ gt: 0 }).withMessage('Price must be greater than 0').toFloat(),
   body('regularPrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Regular price must be a valid number').toFloat(),
