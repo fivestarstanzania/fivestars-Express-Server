@@ -315,19 +315,47 @@ export async function updateOrderStatus(req, res) {
       
     });
     await newNotification.save();
-    
+
+    // Populate the updated order so socket events carry full product data.
+    // Old app versions rely on the socket event to refresh the screen (no explicit re-fetch),
+    // so emitting an unpopulated order left product.title/fullImage undefined and the UI
+    // never updated. New app re-fetches via fetchOrderDetail() so it is unaffected.
+    const populatedUpdatedOrder = await Order.findById(updatedOrder._id).populate({
+      path: "product.id",
+      select: "title name imageUrl imageUrls price",
+    });
+
+    const orderForSocket = populatedUpdatedOrder
+      ? {
+          ...populatedUpdatedOrder._doc,
+          product: {
+            ...populatedUpdatedOrder.product,
+            productTitle: populatedUpdatedOrder.product?.id?.title || "Product not available",
+            displayImage:
+              populatedUpdatedOrder.product?.selectedImageUrl ||
+              populatedUpdatedOrder.product?.productImage ||
+              populatedUpdatedOrder.product?.id?.imageUrl,
+            // backward-compat aliases for old app versions
+            title: populatedUpdatedOrder.product?.id?.title || "Product not available",
+            name: populatedUpdatedOrder.product?.id?.name,
+            fullImage: populatedUpdatedOrder.product?.id?.imageUrl,
+            images: populatedUpdatedOrder.product?.id?.imageUrls,
+          },
+        }
+      : updatedOrder;
+
     //use socket
     const buyerSocketId = getReceiverSocketId(updatedOrder.buyer.id.toString());
     const sellerSocketId = getReceiverSocketId(updatedOrder.seller.id.toString());
     
     if(sellerSocketId){
       
-      io.to( sellerSocketId).emit("orderStatusUpdate", updatedOrder)
+      io.to( sellerSocketId).emit("orderStatusUpdate", orderForSocket)
       //console.log("order status updated by socket to seller")
     }
     if (buyerSocketId) {
       // Send order update
-      io.to(buyerSocketId).emit("orderStatusUpdate", updatedOrder);
+      io.to(buyerSocketId).emit("orderStatusUpdate", orderForSocket);
       //console.log("order statu supdated by socket to buyer")
 
       // Send notification
@@ -350,7 +378,7 @@ export async function updateOrderStatus(req, res) {
           priority: 'high',
           sound: "default", 
           channelId: 'default',
-          data:updatedOrder,
+          data: orderForSocket,
         });
         //console.log('Notification sent on update order status:', response.data);
       } catch (error) {
@@ -359,7 +387,7 @@ export async function updateOrderStatus(req, res) {
     }
 
 
-    res.status(200).json({order:updatedOrder});
+    res.status(200).json({order: orderForSocket});
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
