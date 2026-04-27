@@ -61,6 +61,34 @@ const normalizeCreateOrderOptionalFields = (reqBody = {}) => ({
   selectedImageUrl: cleanText(reqBody.selectedImageUrl ?? reqBody.selectedImage ?? reqBody.selectedImageURL ?? reqBody.imageUrl),
 });
 
+const normalizeNumericText = (value) => {
+  if (typeof value !== 'string') return value;
+  return cleanText(value).replace(/,/g, '');
+};
+
+const normalizeDeliveryOption = (value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = cleanText(value).toLowerCase();
+  if (normalized === 'free') return 'Free';
+  if (normalized === 'paid') return 'Paid';
+  return value;
+};
+
+const normalizeCreateProductPayload = (reqBody = {}) => ({
+  title: cleanText(reqBody.title ?? reqBody.name ?? reqBody.productTitle),
+  description: cleanText(reqBody.description ?? reqBody.desc ?? reqBody.productDescription),
+  category: cleanText(reqBody.category ?? reqBody.productCategory),
+  subcategory: cleanText(reqBody.subcategory ?? reqBody.subCategory ?? reqBody.productSubcategory),
+  supplierName: cleanText(reqBody.supplierName ?? reqBody.supplier),
+  supplierContat: cleanText(reqBody.supplierContat ?? reqBody.supplierContact ?? reqBody.supplierPhone),
+  returnPolicy: cleanText(reqBody.returnPolicy ?? reqBody.return_policy ?? reqBody.returns),
+  price: normalizeNumericText(reqBody.price ?? reqBody.productPrice),
+  regularPrice: normalizeNumericText(reqBody.regularPrice ?? reqBody.compareAtPrice),
+  wholesalePrice: normalizeNumericText(reqBody.wholesalePrice ?? reqBody.bulkPrice),
+  quantity: coerceNumber(reqBody.quantity ?? reqBody.stock ?? reqBody.stockQuantity),
+  deliveryOption: normalizeDeliveryOption(reqBody.deliveryOption ?? reqBody.delivery),
+});
+
 const textField = (field, label, { required = false, min = 1, max = 255 } = {}) => {
   let chain = body(field);
 
@@ -160,16 +188,35 @@ export const validateVisitPayload = [
 ];
 
 export const validateProductCreateRequest = [
+  body('title').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).title ?? value),
+  body('description').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).description ?? value),
+  body('category').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).category ?? value),
+  body('subcategory').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).subcategory ?? value),
+  body('supplierName').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).supplierName ?? value),
+  body('supplierContat').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).supplierContat ?? value),
+  body('returnPolicy').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).returnPolicy ?? value),
+  body('price').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).price ?? value),
+  body('regularPrice').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).regularPrice ?? value),
+  body('wholesalePrice').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).wholesalePrice ?? value),
+  body('quantity').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).quantity ?? value),
+  body('deliveryOption').customSanitizer((value, { req }) => normalizeCreateProductPayload(req?.body || {}).deliveryOption ?? value),
   textField('title', 'Title', { required: true, min: 2, max: 150 }),
   textField('description', 'Description', { required: true, min: 5, max: 5000 }),
   textField('category', 'Category', { required: true, min: 2, max: 100 }),
   textField('subcategory', 'Subcategory', { required: false, min: 2, max: 100 }),
-  
+  textField('supplierName', 'Supplier name', { required: false, min: 2, max: 150 }),
+  textField('supplierContat', 'Supplier contact', { required: false, min: 5, max: 100 }),
   textField('returnPolicy', 'Return policy', { required: false, min: 2, max: 1000 }),
   body('price').exists({ checkFalsy: true }).withMessage('Price is required').bail().isFloat({ gt: 0 }).withMessage('Price must be greater than 0').toFloat(),
   body('regularPrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Regular price must be a valid number').toFloat(),
   body('wholesalePrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Wholesale price must be a valid number').toFloat(),
+  body('quantity').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Quantity must be a valid non-negative number').toInt(),
+  body('deliveryOption').optional({ values: 'falsy' }).isIn(['Free', 'Paid']).withMessage('deliveryOption must be Free or Paid'),
   body('specifications').optional({ values: 'falsy' }).custom((value) => {
+    if (value === 'undefined' || value === 'null') {
+      return true;
+    }
+
     if (typeof value === 'string') {
       JSON.parse(value);
       return true;

@@ -49,12 +49,21 @@ export async function createProduct(req, res) {
       wholesalePrice,
       supplierName,
       supplierContat,
+      supplierContact,
       category,
       title,
       subcategory,
       specifications,
-      returnPolicy
+      returnPolicy,
+      quantity,
+      deliveryOption
     } = req.body;
+
+    const normalizedSupplierContact = supplierContat ?? supplierContact;
+    const parsedQuantity = (quantity === '' || quantity === undefined || quantity === null) ? undefined : Number(quantity);
+    if (quantity !== '' && quantity !== undefined && quantity !== null && (Number.isNaN(parsedQuantity) || parsedQuantity < 0)) {
+      return res.status(400).json({ message: "Quantity must be a valid non-negative number." });
+    }
 
     // single canonical files variable
     const files = (req.files && req.files.length) ? req.files : (req.file ? [req.file] : []);
@@ -160,7 +169,7 @@ export async function createProduct(req, res) {
       regularPrice: parsedRegularPrice,
       wholesalePrice: parsedWholesalePrice,
       supplierName: supplierName?.trim(),
-      supplierContat: supplierContat?.trim(),
+      supplierContat: normalizedSupplierContact?.trim(),
       title,
       imageUrl,
       imageUrls,
@@ -168,6 +177,8 @@ export async function createProduct(req, res) {
       subcategory,
       sellerId,
       returnPolicy,
+      quantity: parsedQuantity,
+      deliveryOption,
       specifications: specsParsed
     });
 
