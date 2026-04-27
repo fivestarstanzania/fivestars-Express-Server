@@ -65,7 +65,7 @@ export async function createOrder(req, res) {
       seller:{
         id: sellerDetails._id, 
         name: sellerDetails.name, 
-        phone: sellerInfos.phone,
+        phone: sellerInfos?.phone || sellerDetails?.phone || "Not provided",
       },
       status:"Pending",
       product: {

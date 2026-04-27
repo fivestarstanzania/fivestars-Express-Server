@@ -24,6 +24,43 @@ const normalizeOrderStatus = (value) => {
   return orderStatusMap[cleaned.toLowerCase()] || cleaned;
 };
 
+const extractObjectId = (value) => {
+  if (!value) return value;
+  if (typeof value === 'string') return cleanText(value);
+  if (typeof value === 'object') {
+    return cleanText(value._id || value.id || value.value || '');
+  }
+  return value;
+};
+
+const normalizeBuyerPayload = (buyer, reqBody = {}) => {
+  const candidate = (buyer && typeof buyer === 'object') ? buyer : {};
+
+  return {
+    ...candidate,
+    name: cleanText(candidate.name ?? reqBody.buyerName ?? reqBody.name),
+    contact: cleanText(candidate.contact ?? candidate.phone ?? reqBody.buyerContact ?? reqBody.contact ?? reqBody.phone),
+    address: cleanText(candidate.address ?? reqBody.buyerAddress ?? reqBody.address ?? reqBody.deliveryAddress ?? reqBody.location),
+  };
+};
+
+const coerceNumber = (value) => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number(cleanText(value));
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  return value;
+};
+
+const normalizeCreateOrderOptionalFields = (reqBody = {}) => ({
+  quantity: coerceNumber(reqBody.quantity ?? reqBody.qty ?? reqBody.productQuantity ?? reqBody.orderQuantity),
+  totalPrice: coerceNumber(reqBody.totalPrice ?? reqBody.total ?? reqBody.orderTotal ?? reqBody.finalTotal ?? reqBody.amount),
+  size: cleanText(reqBody.size ?? reqBody.selectedSize ?? reqBody.productSize),
+  selectedImageUrl: cleanText(reqBody.selectedImageUrl ?? reqBody.selectedImage ?? reqBody.selectedImageURL ?? reqBody.imageUrl),
+});
+
 const textField = (field, label, { required = false, min = 1, max = 255 } = {}) => {
   let chain = body(field);
 
@@ -185,12 +222,16 @@ export const validateProductBatchRequest = [
 ];
 
 export const validateCreateOrderRequest = [
-  objectIdBodyField('sellerUserId', 'sellerUserId'),
-  objectIdBodyField('productId', 'productId'),
-  body('buyer').isObject().withMessage('buyer is required'),
+  body('sellerUserId').customSanitizer((value) => extractObjectId(value)).matches(objectIdPattern).withMessage('sellerUserId must be a valid ID'),
+  body('productId').customSanitizer((value) => extractObjectId(value)).matches(objectIdPattern).withMessage('productId must be a valid ID'),
+  body('buyer').customSanitizer((value, { req }) => normalizeBuyerPayload(value, req?.body || {})).isObject().withMessage('buyer is required'),
+  body('quantity').customSanitizer((value, { req }) => normalizeCreateOrderOptionalFields(req?.body || {}).quantity ?? value),
+  body('totalPrice').customSanitizer((value, { req }) => normalizeCreateOrderOptionalFields(req?.body || {}).totalPrice ?? value),
+  body('size').customSanitizer((value, { req }) => normalizeCreateOrderOptionalFields(req?.body || {}).size ?? value),
+  body('selectedImageUrl').customSanitizer((value, { req }) => normalizeCreateOrderOptionalFields(req?.body || {}).selectedImageUrl ?? value),
   body('buyer.name').exists({ checkFalsy: true }).withMessage('Buyer name is required').bail().isString().withMessage('Buyer name must be a string').bail().customSanitizer(cleanText).isLength({ min: 2, max: 120 }).withMessage('Buyer name is invalid'),
   body('buyer.contact').exists({ checkFalsy: true }).withMessage('Buyer contact is required').bail().isString().withMessage('Buyer contact must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 60 }).withMessage('Buyer contact is invalid'),
-  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 500 }).withMessage('Buyer address is invalid'),
+  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 2, max: 500 }).withMessage('Buyer address is invalid'),
   body('quantity').optional({ values: 'falsy' }).isInt({ min: 1, max: 100 }).withMessage('quantity must be between 1 and 100').toInt(),
   textField('size', 'size', { required: false, min: 1, max: 50 }),
   body('totalPrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('totalPrice must be a valid number').toFloat(),
