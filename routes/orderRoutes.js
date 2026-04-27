@@ -5,6 +5,7 @@ import { validateCreateOrderRequest, validateOrderDetailsQuery, validateOrderSta
 const router = express.Router();
 
 router.post("/create", orderRateLimiter, validateCreateOrderRequest, createOrder);
+router.post("/update-status/:orderId", orderRateLimiter, validateOrderStatusUpdateRequest, updateOrderStatus);
 router.put("/update-status/:orderId", orderRateLimiter, validateOrderStatusUpdateRequest, updateOrderStatus);
 router.get("/user", getAllOrders)
 router.get("/seller", getSellerOrders)
