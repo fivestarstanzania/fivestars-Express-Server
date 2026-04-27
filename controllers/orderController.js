@@ -274,7 +274,7 @@ export async function updateOrderStatus(req, res) {
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
       { status },
-      { new: true, runValidators: true }
+      { new: true }
     );
 
     if (!updatedOrder) {
