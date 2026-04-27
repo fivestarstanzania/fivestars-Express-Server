@@ -4,8 +4,25 @@ const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 const allowedOrderStatuses = ['Pending', 'Received', 'Confirmed', 'Delivered', 'Cancelled'];
 const allowedClickSources = ['search', 'home', 'category', 'offer', 'sellerProfile', 'popular', 'latest', 'other'];
 const allowedNotificationTargets = ['all', 'customer', 'seller'];
+const orderStatusMap = {
+  pending: 'Pending',
+  received: 'Received',
+  confirmed: 'Confirmed',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+  canceled: 'Cancelled',
+};
 
 const cleanText = (value) => (typeof value === 'string' ? value.replace(/\u0000/g, '').trim() : value);
+
+const normalizeOrderStatus = (value) => {
+  if (typeof value !== 'string') return value;
+
+  const cleaned = cleanText(value);
+  if (!cleaned) return cleaned;
+
+  return orderStatusMap[cleaned.toLowerCase()] || cleaned;
+};
 
 const textField = (field, label, { required = false, min = 1, max = 255 } = {}) => {
   let chain = body(field);
@@ -173,7 +190,7 @@ export const validateCreateOrderRequest = [
   body('buyer').isObject().withMessage('buyer is required'),
   body('buyer.name').exists({ checkFalsy: true }).withMessage('Buyer name is required').bail().isString().withMessage('Buyer name must be a string').bail().customSanitizer(cleanText).isLength({ min: 2, max: 120 }).withMessage('Buyer name is invalid'),
   body('buyer.contact').exists({ checkFalsy: true }).withMessage('Buyer contact is required').bail().isString().withMessage('Buyer contact must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 60 }).withMessage('Buyer contact is invalid'),
-  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 3, max: 500 }).withMessage('Buyer address is invalid'),
+  body('buyer.address').exists({ checkFalsy: true }).withMessage('Buyer address is required').bail().isString().withMessage('Buyer address must be a string').bail().customSanitizer(cleanText).isLength({ min: 5, max: 500 }).withMessage('Buyer address is invalid'),
   body('quantity').optional({ values: 'falsy' }).isInt({ min: 1, max: 100 }).withMessage('quantity must be between 1 and 100').toInt(),
   textField('size', 'size', { required: false, min: 1, max: 50 }),
   body('totalPrice').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('totalPrice must be a valid number').toFloat(),
@@ -183,6 +200,10 @@ export const validateCreateOrderRequest = [
 
 export const validateOrderStatusUpdateRequest = [
   param('orderId').matches(objectIdPattern).withMessage('orderId must be a valid ID'),
+  body('status').customSanitizer((value, { req }) => {
+    const legacyStatus = req?.body?.orderStatus ?? req?.body?.state ?? req?.body?.order?.status;
+    return normalizeOrderStatus(value ?? legacyStatus);
+  }),
   body('status').exists({ checkFalsy: true }).withMessage('status is required').bail().isIn(allowedOrderStatuses).withMessage('status is invalid'),
   handleValidationResults,
 ];

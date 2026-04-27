@@ -43,7 +43,7 @@ const orderSchema = new Schema(
       },
       phone: {
         type: String,
-        default: "",
+        required: true,
       },
       
     },
