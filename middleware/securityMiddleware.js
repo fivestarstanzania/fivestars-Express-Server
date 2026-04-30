@@ -8,8 +8,22 @@ const createRateLimiter = ({ windowMs, max, message, skipSuccessfulRequests = fa
   legacyHeaders: false,
   skipSuccessfulRequests,
   handler: (req, res) => {
-    res.status(429).json({ message });
-  },
+      const resetTime = req.rateLimit?.resetTime;
+      let retryAfterSec = 60;
+
+      if (resetTime instanceof Date) {
+        retryAfterSec = Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000));
+      } else if (typeof resetTime === 'number') {
+        retryAfterSec = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000));
+      }
+
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({
+        code: 'RATE_LIMITED',
+        message, // keeps your existing custom message
+        retryAfterSec,
+      });
+    },
 });
 
 export const securityHeaders = helmet({

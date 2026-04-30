@@ -8,7 +8,7 @@ import  {cloudinary}  from '../utils/cloudinary.js';
 import { isSellerBanned } from '../utils/isSellerBanned.js';
 import streamifier from 'streamifier';
 import pLimit from 'p-limit';
-
+import crypto from 'crypto';
 
 // Helper: check whether request included pagination params explicitly
 function hasPaginationParams(req) {
@@ -37,8 +37,57 @@ const getActiveNonBannedPipeline = () => [
 
 
 
+
+// ─── Idempotency store ──────────────────────────────────────────────────────
+// In-memory for single-instance deployments.
+// For multi-instance / production: replace Map with Redis using the same
+// get / set / delete interface below.
+const idempotencyStore = new Map();
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+
+function getIdempotencyRecord(key) {
+  const record = idempotencyStore.get(key);
+  if (!record) return null;
+  if (Date.now() > record.expiresAt) {
+    idempotencyStore.delete(key);
+    return null;
+  }
+  return record;
+}
+
+function setIdempotencyRecord(key, data) {
+  idempotencyStore.set(key, {
+    ...data,
+    expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+  });
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 export async function createProduct(req, res) {
-  console.log("in the uploading started");
+  const requestId = crypto.randomUUID();
+  console.log("in the uploading started", { requestId });
+
+  // ── Optional idempotency (new app only; old app never sends this header) ──
+  const idempotencyKey = req.headers['idempotency-key'] || null;
+
+  if (idempotencyKey) {
+    const existing = getIdempotencyRecord(idempotencyKey);
+    if (existing) {
+      if (existing.status === 'completed') {
+        // Safe replay: return the original success response
+        return res.status(200).json({ ...existing.response, requestId });
+      }
+      if (existing.status === 'in_progress') {
+        return res.status(409).json({
+          code: 'REQUEST_IN_PROGRESS',
+          message: 'This upload is already being processed. Please wait.',
+          requestId,
+        });
+      }
+    }
+    setIdempotencyRecord(idempotencyKey, { status: 'in_progress' });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   try {
     const userId = req.user._id;
@@ -56,37 +105,80 @@ export async function createProduct(req, res) {
       specifications,
       returnPolicy,
       quantity,
-      deliveryOption
+      deliveryOption,
     } = req.body;
 
     const normalizedSupplierContact = supplierContat ?? supplierContact;
-    const parsedQuantity = (quantity === '' || quantity === undefined || quantity === null) ? undefined : Number(quantity);
-    if (quantity !== '' && quantity !== undefined && quantity !== null && (Number.isNaN(parsedQuantity) || parsedQuantity < 0)) {
-      return res.status(400).json({ message: "Quantity must be a valid non-negative number." });
+    const parsedQuantity =
+      quantity === '' || quantity === undefined || quantity === null
+        ? undefined
+        : Number(quantity);
+
+    if (
+      quantity !== '' &&
+      quantity !== undefined &&
+      quantity !== null &&
+      (Number.isNaN(parsedQuantity) || parsedQuantity < 0)
+    ) {
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Quantity must be a valid non-negative number.',
+        requestId,
+      });
     }
 
     // single canonical files variable
-    const files = (req.files && req.files.length) ? req.files : (req.file ? [req.file] : []);
+    const files =
+      req.files && req.files.length ? req.files : req.file ? [req.file] : [];
+
     if (!files || files.length === 0) {
-      return res.status(400).json({ message: "No image file uploaded." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'No image file uploaded.',
+        requestId,
+      });
     }
     if (files.length > 4) {
-      return res.status(400).json({ message: "Maximum 4 images allowed per product." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Maximum 4 images allowed per product.',
+        requestId,
+      });
     }
 
     console.log("STEP 1: Validating Seller...");
     const seller = await Seller.findOne({ userId });
-    if (!seller) return res.status(404).json({ message: "Seller not found." });
+    if (!seller) {
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(404).json({
+        code: 'SELLER_NOT_FOUND',
+        message: 'Seller not found.',
+        requestId,
+      });
+    }
 
     const sellerId = seller._id;
     if (await isSellerBanned(sellerId)) {
-      return res.status(403).json({ message: "You are banned from adding products." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(403).json({
+        code: 'SELLER_BANNED',
+        message: 'You are banned from adding products.',
+        requestId,
+      });
     }
 
     const productCount = await Product.countDocuments({ sellerId });
     const maxSellerProductAllowed = seller.uploadLimit || 10;
     if (productCount >= maxSellerProductAllowed) {
-      return res.status(403).json({ message: `Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.` });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(403).json({
+        code: 'PRODUCT_LIMIT_REACHED',
+        message: `Product limit reached. You can only upload up to ${maxSellerProductAllowed} products.`,
+        requestId,
+      });
     }
 
     console.log("Uploading images to Cloudinary...");
@@ -94,13 +186,12 @@ export async function createProduct(req, res) {
       new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           {
-            folder: "products",
-            quality: "auto",
-            fetch_format: "auto",
+            folder: 'products',
+            quality: 'auto',
+            fetch_format: 'auto',
             width: 800,
-            crop: "limit",
-            format: "webp"
-            // note: cloudinary uploader options vary by SDK/version — remove unsupported options if errors occur
+            crop: 'limit',
+            format: 'webp',
           },
           (error, result) => {
             if (error) {
@@ -110,30 +201,44 @@ export async function createProduct(req, res) {
             resolve(result);
           }
         );
-
         streamifier.createReadStream(file.buffer).pipe(stream);
       });
 
-    const limit = pLimit(2); // concurrency 2
+    const limit = pLimit(2); // concurrency 2 — keep configurable
     const uploadPromises = files.map((file, index) => {
       console.log(`Queued upload ${index + 1}/${files.length}`);
       return limit(() => uploadStreamPromise(file));
     });
 
-    // <- THE KEY: wait for all uploads to finish
     let results;
     try {
       results = await Promise.all(uploadPromises);
       console.log("All images uploaded successfully.");
     } catch (cloudError) {
       console.log("ERROR: Cloudinary upload failed →", cloudError);
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+
+      // Detect transient upstream failures (5xx / rate-limit from Cloudinary)
+      const httpCode = cloudError?.http_code ?? cloudError?.status ?? 0;
+      const isTransient = httpCode === 429 || httpCode >= 500;
+
+      if (isTransient) {
+        return res.status(503).set('Retry-After', '10').json({
+          code: 'TEMPORARY_UPSTREAM_FAILURE',
+          message: 'Image upload service is temporarily unavailable. Please try again shortly.',
+          retryAfterSec: 10,
+          requestId,
+        });
+      }
+
       return res.status(500).json({
-        message: "Failed to upload images to Cloudinary.",
-        error: cloudError.message || cloudError
+        code: 'CLOUDINARY_UPLOAD_FAILED',
+        message: 'Failed to upload images to Cloudinary.',
+        requestId,
       });
     }
 
-    const imageUrls = results.map(r => r.secure_url);
+    const imageUrls = results.map((r) => r.secure_url);
     const imageUrl = imageUrls[0];
 
     // validate numeric prices
@@ -142,22 +247,45 @@ export async function createProduct(req, res) {
     const parsedWholesalePrice = wholesalePrice ? Number(wholesalePrice) : undefined;
 
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      return res.status(400).json({ message: "Please enter a valid price." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Please enter a valid price.',
+        requestId,
+      });
     }
     if (regularPrice && isNaN(parsedRegularPrice)) {
-      return res.status(400).json({ message: "Regular price must be a valid number." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Regular price must be a valid number.',
+        requestId,
+      });
     }
     if (wholesalePrice && isNaN(parsedWholesalePrice)) {
-      return res.status(400).json({ message: "Wholesale price must be a valid number." });
+      if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Wholesale price must be a valid number.',
+        requestId,
+      });
     }
 
     // parse specifications safely
     let specsParsed = {};
     if (specifications) {
       try {
-        specsParsed = typeof specifications === "string" ? JSON.parse(specifications) : specifications;
+        specsParsed =
+          typeof specifications === 'string'
+            ? JSON.parse(specifications)
+            : specifications;
       } catch (parseErr) {
-        return res.status(400).json({ message: "Invalid specifications JSON." });
+        if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
+        return res.status(400).json({
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid specifications JSON.',
+          requestId,
+        });
       }
     }
 
@@ -179,17 +307,43 @@ export async function createProduct(req, res) {
       returnPolicy,
       quantity: parsedQuantity,
       deliveryOption,
-      specifications: specsParsed
+      specifications: specsParsed,
     });
 
     await newProduct.save();
     console.log("the product created success");
-    res.status(200).json({ message: "Product created successfully", newProduct });
+
+    const successResponse = {
+      message: 'Product created successfully',  // kept identical for old app
+      newProduct,
+      requestId,                                 // additive — old app ignores it
+    };
+
+    // Mark idempotency key as completed and cache the response
+    if (idempotencyKey) {
+      setIdempotencyRecord(idempotencyKey, {
+        status: 'completed',
+        response: successResponse,
+      });
+    }
+
+    return res.status(200).json(successResponse);
+
   } catch (error) {
+    if (idempotencyKey) idempotencyStore.delete(idempotencyKey);
     console.error("Error creating product:", error);
-    res.status(500).json({ message: "Failed to create the product", error: error.message });
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create the product',   // kept identical for old app
+      error: error.message,
+      requestId,
+    });
   }
 }
+
+
+
+
 export async function updateProduct(req, res) {
     //console.log("in the updating started");
     try {

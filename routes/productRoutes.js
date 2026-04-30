@@ -23,6 +23,8 @@ import { getPopularProducts } from '../controllers/ProductLog.js';
 import { productMutationRateLimiter, reviewRateLimiter } from '../middleware/securityMiddleware.js';
 import { validateEditProductRequest, validateObjectIdParam, validateProductBatchRequest, validateProductClickRequest, validateProductCreateRequest, validateProductUpdateRequest } from '../middleware/requestValidation.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { uploadImages } from '../middleware/multer.js';
+
 const router = express.Router();
 
 
@@ -50,7 +52,7 @@ router.get('/:id', getProduct);
 router.get('/', getAllProducts);
 
 // --- 4. POST ROUTES ---
-router.post('/upload', productMutationRateLimiter, upload.array('images', 4), validateProductCreateRequest, createProduct);
+router.post('/upload', productMutationRateLimiter, uploadImages, validateProductCreateRequest, createProduct);
 router.post('/log-click', reviewRateLimiter, validateProductClickRequest, createLogClickedProducts);
 router.post('/analytics/click', reviewRateLimiter, validateProductClickRequest, createLogClickedProducts)
 router.post('/batch', productMutationRateLimiter, validateProductBatchRequest, getProductsByIds);

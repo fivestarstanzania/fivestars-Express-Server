@@ -134,6 +134,7 @@ export const handleValidationResults = (req, res, next) => {
     // --- end debug log ---
 
     return res.status(400).json({
+      code: 'VALIDATION_ERROR',
       message: 'Validation failed',
       errors: fieldErrors,
     });
